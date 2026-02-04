@@ -76,59 +76,119 @@ function sendKeepAlive(headers) {
 // --- FUNCTION 2: FETCH AND WRITE JSON ---
 // Fetches course data and writes to classInfo.json, removing ztcEncodedImage and adding student info
 function fetchAndWrite(headers, crn, name, email) {
-    const timestamp = new Date().toLocaleTimeString();
-    console.log(`[${timestamp}] 📥 Fetching data for CRN: ${crn}...`);
-    const params = { ...searchParams, txt_keywordlike: crn };
-    const queryString = new URLSearchParams(params).toString();
-    const SEARCH_PATH = `/StudentRegistrationSsb/ssb/searchResults/searchResults?${queryString}`;
-    const options = {
-        hostname: HOSTNAME,
-        path: SEARCH_PATH,
-        method: 'GET',
-        headers
-    };
-    const req = https.request(options, (res) => {
-        let rawData = '';
-        res.on('data', (chunk) => { rawData += chunk; });
-        res.on('end', () => {
-            let output = rawData;
-            let parsed = null;
-            try {
-                parsed = JSON.parse(rawData);
-                // Remove ztcEncodedImage from all results if present
-                if (parsed && Array.isArray(parsed.data)) {
-                    parsed.data = parsed.data.map(item => {
-                        const { ztcEncodedImage, ...rest } = item;
-                        return rest;
-                    });
+    return new Promise((resolve, reject) => {
+        const timestamp = new Date().toLocaleTimeString();
+        console.log(`[${timestamp}] 📥 Fetching data for CRN: ${crn}...`);
+        const params = { ...searchParams, txt_keywordlike: crn };
+        const queryString = new URLSearchParams(params).toString();
+        const SEARCH_PATH = `/StudentRegistrationSsb/ssb/searchResults/searchResults?${queryString}`;
+        const options = {
+            hostname: HOSTNAME,
+            path: SEARCH_PATH,
+            method: 'GET',
+            headers
+        };
+        const req = https.request(options, (res) => {
+            let rawData = '';
+            res.on('data', (chunk) => { rawData += chunk; });
+            res.on('end', () => {
+                let output = rawData;
+                let parsed = null;
+                try {
+                    parsed = JSON.parse(rawData);
+                    // Check if data is null, which means course not found
+                    if (parsed && parsed.data === null) {
+                        reject(new Error('Course registration failed: No course data found for the provided CRN. Please check the CRN and try again.'));
+                        return;
+                    }
+                    // Remove ztcEncodedImage from all results if present
+                    if (parsed && Array.isArray(parsed.data)) {
+                        // Filter to only the course with matching CRN
+                        parsed.data = parsed.data.filter(course => course.courseReferenceNumber === crn);
+                        // If no matching course, set data to null
+                        if (parsed.data.length === 0) {
+                            parsed.data = null;
+                        } else {
+                            // Remove ztcEncodedImage from the matching course
+                            parsed.data = parsed.data.map(item => {
+                                const { ztcEncodedImage, ...rest } = item;
+                                return rest;
+                            });
+                        }
+                    }
+                    // Add student info section
+                    parsed.studentInfo = { name, email };
+                    parsed.lastUpdated = new Date().toISOString();
+                    output = JSON.stringify(parsed, null, 2);
+                } catch (e) {
+                    // Not JSON, leave as is
                 }
-                // Add student info section
-                parsed.studentInfo = { name, email };
-                output = JSON.stringify(parsed, null, 2);
-            } catch (e) {
-                // Not JSON, leave as is
-            }
-            fs.writeFileSync('classInfo.json', output);
-            if (rawData.trim().startsWith('<')) {
-                console.log(`[${timestamp}] ❌ ERROR: Received HTML (Session Expired). Update cookies.`);
-            } else {
-                console.log(`[${timestamp}] ✅ Success: Data written to classInfo.json`);
-            }
+                fs.writeFileSync('classInfo.json', output);
+                console.log(`[${timestamp}] 📄 File written. Data length: ${output.length} characters`);
+                if (parsed && parsed.data && Array.isArray(parsed.data) && parsed.data.length > 0) {
+                    console.log(`[${timestamp}] 📊 Course data: ${parsed.data.length} sections found`);
+                } else if (parsed && parsed.data === null) {
+                    console.log(`[${timestamp}] 📊 No course data available (data is null)`);
+                } else {
+                    console.log(`[${timestamp}] 📊 Course data status unknown`);
+                }
+                if (rawData.trim().startsWith('<')) {
+                    reject(new Error('Session expired. Please update your cookies.'));
+                } else {
+                    console.log(`[${timestamp}] ✅ Success: Data written to classInfo.json`);
+                    resolve();
+                }
+            });
         });
+        req.on('error', (e) => reject(new Error(`Request Error: ${e.message}`)));
+        req.end();
     });
-    req.on('error', (e) => console.error("Request Error:", e.message));
-    req.end();
 }
 
+
+// Global variable to store interval ID for stopping
+let monitoringInterval = null;
+
+// Function to stop monitoring
+function stopMonitoring() {
+    if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+        console.log(`[${new Date().toLocaleTimeString()}] 🛑 Course monitoring stopped.`);
+    }
+}
 
 // Exported function for API use
 // This is called by the backend with user parameters
 async function runCourseGetter({ name, crn, email, cookies }) {
+    // If already monitoring, stop first
+    stopMonitoring();
+    
     const headers = buildHeaders(cookies);
-    sendKeepAlive(headers);
-    // Wait 2 seconds after keep-alive to run the fetch
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    fetchAndWrite(headers, crn, name, email);
+    
+    // Function to perform the fetch
+    const performFetch = async () => {
+        const timestamp = new Date().toLocaleTimeString();
+        console.log(`[${timestamp}] 🔄 Starting scheduled fetch for CRN: ${crn}`);
+        try {
+            sendKeepAlive(headers);
+            // Wait 2 seconds after keep-alive to run the fetch
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await fetchAndWrite(headers, crn, name, email);
+            console.log(`[${timestamp}] ✅ Course data updated.`);
+        } catch (error) {
+            console.log(`[${timestamp}] ❌ Error during monitoring: ${error.message}`);
+        }
+    };
+    
+    // Start monitoring every 30 seconds
+    monitoringInterval = setInterval(performFetch, 30000);
+    
+    // Perform initial fetch immediately
+    await performFetch();
+    
+    console.log(`[${new Date().toLocaleTimeString()}] 🔄 Course monitoring started. Will check every 30 seconds.`);
 }
 
-module.exports = { runCourseGetter };
+// Export the stop function too
+module.exports = { runCourseGetter, stopMonitoring };
