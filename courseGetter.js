@@ -1,258 +1,228 @@
+const fetch = require('node-fetch');
+const fs = require('fs').promises;
+const path = require('path');
+
 /**
- * courseGetter.js
- *
- * Purpose: Continuously fetches course registration data from the MRU registration system.
- * - Runs in a loop, checking every X seconds
- * - Maintains session with keep-alive requests
- * - Writes updates to classInfo.json whenever data is retrieved
- *
- * Used as a backend utility, triggered by API requests from the front end.
+ * Fetch course data from MRU registration system
  */
-// Import required modules
-const https = require('https');
-const fs = require('fs');
-
-// --- CONFIGURATION ---
-// Hostname for the MRU registration system
-const HOSTNAME = "ban9ssb-prod.mtroyal.ca";
-
-// How often to check for course data (in milliseconds)
-const CHECK_INTERVAL = 10000; // 10 seconds - adjust as needed
-
-// 1. PARAMETERS SECTION
-// Default search parameters for the course search
-const searchParams = {    
-    txt_term: "202601", // Academic term
-    startDatepicker: "",
-    endDatepicker: "",
-    uniqueSessionId: "tgioo1770167967506", // Session ID (can be dynamic)
-    pageOffset: "0",
-    pageMaxSize: "10",
-    sortColumn: "subjectDescription",
-    sortDirection: "asc"
-};
-
-// Global variables to track the monitoring loop
-let isRunning = false;
-let monitoringInterval = null;
-
-// --- SYSTEM SETUP ---
-// API paths for keep-alive and search
-const KEEP_ALIVE_PATH = "/StudentRegistrationSsb/ssb/keepAlive/data";
-
-
-// Build HTTP headers for requests, including cookies
-function buildHeaders(cookies) {
-    const cookieString = Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ');
-    return {
-        'Cookie': cookieString,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': `https://${HOSTNAME}/StudentRegistrationSsb/ssb/registration`,
-        'X-Requested-With': 'XMLHttpRequest'
-    };
-}
-
-// --- FUNCTION 1: KEEP ALIVE ---
-// Sends a keep-alive request to maintain session
-function sendKeepAlive(headers) {
-    return new Promise((resolve) => {
-        const timestamp = new Date().toLocaleTimeString();
-        console.log(`[${timestamp}] ❤️  Sending Keep Alive...`);
-        const options = {
-            hostname: HOSTNAME,
-            path: KEEP_ALIVE_PATH,
-            method: 'GET',
-            headers
-        };
-        const req = https.request(options, (res) => {
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
-            res.on('end', () => {
-                if (res.statusCode === 200 && data.includes("Alive")) {
-                    console.log(`[${timestamp}] ✅ Keep Alive Successful`);
-                    resolve(true);
-                } else {
-                    console.log(`[${timestamp}] ⚠️  Keep Alive Warning: ${res.statusCode}`);
-                    resolve(false);
-                }
-            });
-        });
-        req.on('error', (e) => {
-            console.error(`[${timestamp}] ❌ Keep Alive Error:`, e.message);
-            resolve(false);
-        });
-        req.end();
+async function fetchCourseData(crn, jsessionid, mruCookie) {
+  const url = 'https://ssb-prod.ec.mru.ca/PROD_Registration/bwckschd.p_get_crse_unsec';
+  
+  console.log(` Fetching data for CRN: ${crn}`);
+  
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': `JSESSIONID=${jsessionid}; MRUB9SSBPRODREGHA=${mruCookie}`,
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      body: new URLSearchParams({
+        term_in: '202601', // Winter 2026
+        sel_subj: 'dummy',
+        sel_day: 'dummy',
+        sel_schd: 'dummy',
+        sel_insm: 'dummy',
+        sel_camp: 'dummy',
+        sel_levl: 'dummy',
+        sel_sess: 'dummy',
+        sel_instr: 'dummy',
+        sel_ptrm: 'dummy',
+        sel_attr: 'dummy',
+        sel_crn: crn,
+        sel_title: '',
+        sel_from_cred: '',
+        sel_to_cred: '',
+        begin_hh: '0',
+        begin_mi: '0',
+        begin_ap: 'a',
+        end_hh: '0',
+        end_mi: '0',
+        end_ap: 'a'
+      })
     });
-}
 
-// --- FUNCTION 2: FETCH AND WRITE JSON ---
-// Fetches course data and writes to classInfo.json
-function fetchAndWrite(headers, crn, name, email, attemptNumber) {
-    return new Promise((resolve) => {
-        const timestamp = new Date().toLocaleTimeString();
-        console.log(`[${timestamp}] 📥 Fetching data for CRN: ${crn}... (Check #${attemptNumber})`);
-        const params = { ...searchParams, txt_keywordlike: crn };
-        const queryString = new URLSearchParams(params).toString();
-        const SEARCH_PATH = `/StudentRegistrationSsb/ssb/searchResults/searchResults?${queryString}`;
-        const options = {
-            hostname: HOSTNAME,
-            path: SEARCH_PATH,
-            method: 'GET',
-            headers
-        };
-        const req = https.request(options, (res) => {
-            let rawData = '';
-            res.on('data', (chunk) => { rawData += chunk; });
-            res.on('end', () => {
-                let output = rawData;
-                let parsed = null;
-                let success = false;
-                
-                try {
-                    // Check if session expired (HTML response)
-                    if (rawData.trim().startsWith('<')) {
-                        console.log(`[${timestamp}] ❌ ERROR: Session expired. Please update cookies and restart.`);
-                        fs.writeFileSync('classInfo.json', JSON.stringify({
-                            error: "Session expired - cookies are invalid",
-                            message: "Please get fresh cookies from Banner and restart the application",
-                            lastUpdated: new Date().toISOString()
-                        }, null, 2));
-                        resolve(false);
-                        return;
-                    }
-                    
-                    parsed = JSON.parse(rawData);
-                    
-                    // Check if data is null or empty
-                    if (!parsed.data || parsed.data === null || (Array.isArray(parsed.data) && parsed.data.length === 0)) {
-                        console.log(`[${timestamp}] ⚠️  No course data found - will keep checking...`);
-                    } else {
-                        success = true;
-                    }
-                    
-                    // Remove ztcEncodedImage from all results if present
-                    if (parsed && Array.isArray(parsed.data)) {
-                        parsed.data = parsed.data.map(item => {
-                            const { ztcEncodedImage, ...rest } = item;
-                            return rest;
-                        });
-                    }
-                    
-                    // Add student info section and timestamp
-                    parsed.studentInfo = { name, email };
-                    parsed.lastUpdated = new Date().toISOString();
-                    parsed.checkNumber = attemptNumber;
-                    output = JSON.stringify(parsed, null, 2);
-                    
-                } catch (e) {
-                    console.log(`[${timestamp}] ❌ ERROR: Failed to parse response - ${e.message}`);
-                    resolve(false);
-                    return;
-                }
-                
-                // Write to file
-                fs.writeFileSync('classInfo.json', output);
-                
-                if (success) {
-                    console.log(`[${timestamp}] ✅ SUCCESS: Found ${parsed.data.length} course(s)! Data written to classInfo.json`);
-                    console.log(`[${timestamp}] 🔄 Continuing to monitor for updates...`);
-                } else {
-                    console.log(`[${timestamp}] 📝 Status saved to classInfo.json (no course data yet)`);
-                }
-                
-                resolve(success);
-            });
-        });
-        req.on('error', (e) => {
-            const timestamp = new Date().toLocaleTimeString();
-            console.error(`[${timestamp}] ❌ Request Error:`, e.message);
-            resolve(false);
-        });
-        req.end();
-    });
-}
-
-// --- FUNCTION 3: CONTINUOUS MONITORING ---
-// Continuously checks for course data at regular intervals
-async function startContinuousMonitoring({ name, crn, email, cookies }) {
-    if (isRunning) {
-        console.log("⚠️  Monitoring is already running!");
-        return;
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    isRunning = true;
-    const headers = buildHeaders(cookies);
-    let attemptNumber = 0;
-    let keepAliveCounter = 0;
+    const html = await response.text();
     
-    console.log("\n" + "=".repeat(60));
-    console.log("🚀 STARTING CONTINUOUS COURSE MONITORING");
-    console.log("=".repeat(60));
-    console.log(`Student: ${name}`);
-    console.log(`Email: ${email}`);
-    console.log(`CRN: ${crn}`);
-    console.log(`Check Interval: ${CHECK_INTERVAL/1000} seconds`);
-    console.log(`Term: 202601 (Winter 2026)`);
-    console.log("=".repeat(60) + "\n");
-
-    // Initial keep-alive and fetch
-    await sendKeepAlive(headers);
-    await new Promise(r => setTimeout(r, 1000));
-    attemptNumber++;
-    await fetchAndWrite(headers, crn, name, email, attemptNumber);
-
-    // Set up continuous monitoring
-    monitoringInterval = setInterval(async () => {
-        keepAliveCounter++;
-        
-        // Send keep-alive every 3 checks (every 30 seconds if interval is 10s)
-        if (keepAliveCounter >= 3) {
-            await sendKeepAlive(headers);
-            await new Promise(r => setTimeout(r, 1000));
-            keepAliveCounter = 0;
-        }
-        
-        attemptNumber++;
-        await fetchAndWrite(headers, crn, name, email, attemptNumber);
-        
-    }, CHECK_INTERVAL);
-
-    console.log(`✅ Monitoring started! Checking every ${CHECK_INTERVAL/1000} seconds.`);
-    console.log("💡 Press Ctrl+C to stop monitoring\n");
+    // Parse course information from HTML
+    const courseData = parseHTML(html, crn);
+    
+    // Save to classInfo.json
+    await saveCourseInfo(courseData);
+    
+    console.log(` Successfully fetched data for CRN ${crn}`);
+    console.log(`   Seats: ${courseData.seatsAvailable}/${courseData.capacity}`);
+    
+    return courseData;
+    
+  } catch (error) {
+    console.error(`Error fetching course data for CRN ${crn}:`, error.message);
+    throw error;
+  }
 }
 
-// --- FUNCTION 4: STOP MONITORING ---
-function stopMonitoring() {
-    if (monitoringInterval) {
-        clearInterval(monitoringInterval);
-        monitoringInterval = null;
+/**
+ * Parse HTML response to extract course information
+ */
+function parseHTML(html, crn) {
+  try {
+    // Extract course title
+    const titleMatch = html.match(/<th[^>]*class="ddlabel"[^>]*>([^<]+)<\/th>/i);
+    const courseTitle = titleMatch ? titleMatch[1].trim() : 'Unknown Course';
+    
+    // Extract subject and course number
+    const subjectMatch = courseTitle.match(/^([A-Z]{4})\s+(\d{4})/);
+    const subject = subjectMatch ? subjectMatch[1] : '';
+    const courseNumber = subjectMatch ? subjectMatch[2] : '';
+    
+    // Extract seats information
+    const seatsMatch = html.match(/Seats Available:\s*<\/[^>]+>\s*(\d+)/i) || 
+                       html.match(/Seats:\s*<\/[^>]+>\s*(\d+)/i);
+    const seatsAvailable = seatsMatch ? parseInt(seatsMatch[1]) : 0;
+    
+    // Extract capacity
+    const capacityMatch = html.match(/Maximum Enrollment:\s*<\/[^>]+>\s*(\d+)/i) ||
+                          html.match(/Capacity:\s*<\/[^>]+>\s*(\d+)/i);
+    const capacity = capacityMatch ? parseInt(capacityMatch[1]) : 0;
+    
+    // Extract enrollment
+    const enrollmentMatch = html.match(/Current Enrollment:\s*<\/[^>]+>\s*(\d+)/i) ||
+                            html.match(/Enrollment:\s*<\/[^>]+>\s*(\d+)/i);
+    const enrollment = enrollmentMatch ? parseInt(enrollmentMatch[1]) : 0;
+    
+    // Extract waitlist info
+    const waitlistSeatsMatch = html.match(/Waitlist Seats:\s*<\/[^>]+>\s*(\d+)/i);
+    const waitlistSeats = waitlistSeatsMatch ? parseInt(waitlistSeatsMatch[1]) : 0;
+    
+    const waitlistCapacityMatch = html.match(/Waitlist Capacity:\s*<\/[^>]+>\s*(\d+)/i);
+    const waitlistCapacity = waitlistCapacityMatch ? parseInt(waitlistCapacityMatch[1]) : 0;
+    
+    // Extract instructor
+    const instructorMatch = html.match(/Instructor:\s*<\/[^>]+>\s*([^<]+)/i);
+    const instructor = instructorMatch ? instructorMatch[1].trim() : 'TBA';
+    
+    // Extract meeting times
+    const timeMatch = html.match(/(\d{1,2}:\d{2}\s*[ap]m)\s*-\s*(\d{1,2}:\d{2}\s*[ap]m)/i);
+    const startTime = timeMatch ? timeMatch[1] : '';
+    const endTime = timeMatch ? timeMatch[2] : '';
+    
+    // Extract days
+    const daysMatch = html.match(/>(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[\s,]*(Mon|Tue|Wed|Thu|Fri|Sat|Sun)?/gi);
+    const days = daysMatch ? daysMatch.map(d => d.replace('>', '').trim()).join(', ') : '';
+    
+    // Extract location
+    const locationMatch = html.match(/Building:\s*<\/[^>]+>\s*([^<]+)/i);
+    const building = locationMatch ? locationMatch[1].trim() : '';
+    
+    const roomMatch = html.match(/Room:\s*<\/[^>]+>\s*([^<]+)/i);
+    const room = roomMatch ? roomMatch[1].trim() : '';
+    
+    return {
+      crn,
+      courseTitle,
+      subject,
+      courseNumber,
+      seatsAvailable,
+      capacity,
+      enrollment,
+      waitlistSeats,
+      waitlistCapacity,
+      instructor,
+      schedule: {
+        days,
+        startTime,
+        endTime,
+        building,
+        room
+      },
+      status: seatsAvailable > 0 ? 'OPEN' : 'FULL',
+      timestamp: new Date().toISOString(),
+      lastChecked: new Date().toLocaleString()
+    };
+  } catch (error) {
+    console.error(' Error parsing HTML:', error.message);
+    return {
+      crn,
+      courseTitle: 'Error parsing course data',
+      seatsAvailable: 0,
+      capacity: 0,
+      enrollment: 0,
+      status: 'ERROR',
+      timestamp: new Date().toISOString(),
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Save course information to classInfo.json
+ */
+async function saveCourseInfo(courseData) {
+  try {
+    const filePath = path.join(__dirname, 'classInfo.json');
+    let courses = [];
+    
+    // Read existing data
+    try {
+      const existingData = await fs.readFile(filePath, 'utf-8');
+      courses = JSON.parse(existingData);
+    } catch (error) {
+      // File doesn't exist, will create new
     }
-    isRunning = false;
-    console.log("\n" + "=".repeat(60));
-    console.log("⏹️  MONITORING STOPPED");
-    console.log("=".repeat(60) + "\n");
+    
+    // Update or add course
+    const existingIndex = courses.findIndex(c => c.crn === courseData.crn);
+    if (existingIndex >= 0) {
+      courses[existingIndex] = courseData;
+    } else {
+      courses.push(courseData);
+    }
+    
+    // Write to file
+    await fs.writeFile(filePath, JSON.stringify(courses, null, 2));
+    console.log(`💾 Saved course data to classInfo.json`);
+    
+  } catch (error) {
+    console.error('Error saving course info:', error.message);
+  }
 }
 
-// Exported function for API use (runs once, then starts continuous monitoring)
-async function runCourseGetter({ name, crn, email, cookies }) {
-    // Start continuous monitoring instead of single run
-    await startContinuousMonitoring({ name, crn, email, cookies });
-    return true;
+/**
+ * Fetch multiple courses
+ */
+async function fetchMultipleCourses(crns, jsessionid, mruCookie) {
+  console.log(`📥 Fetching data for ${crns.length} courses...`);
+  
+  const results = [];
+  
+  for (const crn of crns) {
+    try {
+      const courseData = await fetchCourseData(crn, jsessionid, mruCookie);
+      results.push(courseData);
+      
+      // Add delay between requests to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (error) {
+      console.error(` Failed to fetch CRN ${crn}`);
+      results.push({
+        crn,
+        error: error.message,
+        status: 'ERROR'
+      });
+    }
+  }
+  
+  console.log(`Completed fetching ${results.length} courses`);
+  return results;
 }
 
-// Handle cleanup on exit
-process.on('SIGINT', () => {
-    console.log("\n\n⏹️  Received stop signal...");
-    stopMonitoring();
-    process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-    console.log("\n\n⏹️  Received termination signal...");
-    stopMonitoring();
-    process.exit(0);
-});
-
-module.exports = { runCourseGetter, stopMonitoring };
+module.exports = {
+  fetchCourseData,
+  fetchMultipleCourses,
+  saveCourseInfo
+};
