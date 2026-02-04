@@ -4,11 +4,13 @@ export default function App() {
   const [name, setName] = useState("");
   const [crn, setCrn] = useState("");
   const [email, setEmail] = useState("");
+  const [JSESSIONIDCookie, setJSESSIONIDCookie] = useState("");
+  const [MRUB9SSBPRODREGHACookie, setMRUB9SSBPRODREGHACookie] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [progress, setProgress] = useState(0);
 
-  function handleEnter() {
+  async function handleEnter() {
     setMessage("");
     setProgress(0);
     setLoading(true);
@@ -20,11 +22,25 @@ export default function App() {
       setProgress(p);
     }, 30);
 
-    setTimeout(() => {
+    try {
+      const response = await fetch("http://localhost:5000/api/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, crn, email, JSESSIONIDCookie, MRUB9SSBPRODREGHACookie }),
+      });
+      const data = await response.json();
+      setTimeout(() => {
+        clearInterval(interval);
+        setLoading(false);
+        setMessage(data.success ? `Submitted!\n Name:  ${name}\n CRN:  ${crn}\n Email:  ${email}\n` : `Error: ${data.message}`);
+      }, 1500);
+    } catch (err) {
       clearInterval(interval);
       setLoading(false);
-      setMessage(`Entered Data:\n Name:  ${name}\n CRN:  ${crn}\n Email:  ${email}\n`);
-    }, 1500);
+      setMessage("Failed to submit. " + err.message);
+    }
   }
 
   const containerStyle = {
@@ -122,6 +138,22 @@ export default function App() {
               />
             </div>
 
+            <div style={rowStyle}>
+              <div style={labelStyle}>JSESSIONID Cookie:</div>
+              <input
+                style={inputStyle}
+                value={JSESSIONIDCookie}
+                onChange={(e) => setJSESSIONIDCookie(e.target.value)}
+              />
+            </div>
+            <div style={rowStyle}>
+              <div style={labelStyle}>MRUB9SSBPRODREGHA Cookie:</div>
+              <input
+                style={inputStyle}
+                value={MRUB9SSBPRODREGHACookie}
+                onChange={(e) => setMRUB9SSBPRODREGHACookie(e.target.value)}
+              />
+            </div>
             <button style={buttonStyle} onClick={handleEnter}>
               Enter
             </button>
@@ -179,6 +211,8 @@ export default function App() {
                 setName("");
                 setCrn("");
                 setEmail("");
+                setJSESSIONIDCookie("");
+                setMRUB9SSBPRODREGHACookie("");
                 setMessage("");
               }}
             >
