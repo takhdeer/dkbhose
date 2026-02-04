@@ -1,121 +1,47 @@
 /**
  * Course Availability Service
- * Handles parsing and checking course availability from API JSON data
+ * Utility functions for checking course availability from JSON data
  */
 
-/** Commented out as testing is not needed */
 /**
- * Checks if a specific course has available seats
- * @param {Object} course - The course object from JSON data
- * @returns {boolean} - True if seats are available
-
-export const hasAvailableSeats = (course) => {
-  if (!course) return false;
-  
+ * Check if a course has available seats
+ */
+function hasAvailableSeats(course) {
   return course.seatsAvailable > 0 && course.openSection === true;
-};
+}
 
 /**
- * Finds available courses for a specific term and subject
- * @param {Object} jsonData - The complete JSON response object
- * @param {string} term - The term code to filter by (e.g., "202601")
- * @param {string} subject - Optional subject code to filter by (e.g., "COMP")
- * @returns {Array} - Array of available courses with relevant info
+ * Find all available courses for a given term and optional subject
  */
-export const findAvailableCourses = (jsonData, term, subject = null) => {
-  if (!jsonData?.success || !Array.isArray(jsonData.data)) {
-    console.error('Invalid JSON data structure');
+function findAvailableCourses(jsonData, term, subject = null) {
+  if (!jsonData || !jsonData.data) {
     return [];
   }
 
-  const courses = jsonData.data;
-  
-  const availableCourses = courses.filter(course => {
-    const matchesTerm = course.term === term;
-    const matchesSubject = subject ? course.subject === subject : true;
-    const hasSeats = hasAvailableSeats(course);
-    
-    return matchesTerm && matchesSubject && hasSeats;
-  });
+  let courses = jsonData.data;
 
-  return availableCourses.map(course => ({
-    id: course.id,
-    crn: course.courseReferenceNumber,
-    courseCode: course.subjectCourse,
-    courseNumber: course.courseNumber,
-    subject: course.subject,
-    title: course.courseTitle,
-    term: course.termDesc,
-    section: course.sequenceNumber,
-    instructor: course.faculty[0]?.displayName || 'TBA',
-    seatsAvailable: course.seatsAvailable,
-    maxEnrollment: course.maximumEnrollment,
-    currentEnrollment: course.enrollment,
-    scheduleType: course.scheduleTypeDescription,
-    credits: course.creditHours,
-    meetingInfo: extractMeetingInfo(course.meetingsFaculty),
-    campus: course.campusDescription,
-    instructionalMethod: course.instructionalMethodDescription
-  }));
-};
-
-/**
- * Extracts meeting time information from meetingsFaculty array
- * @param {Array} meetingsFaculty 
- * @returns {Object}
- */
-const extractMeetingInfo = (meetingsFaculty) => {
-  if (!meetingsFaculty || meetingsFaculty.length === 0) {
-    return null;
+  // Filter by term
+  if (term) {
+    courses = courses.filter(course => course.term === term);
   }
 
-  const meeting = meetingsFaculty[0]?.meetingTime;
-  if (!meeting) return null;
+  // Filter by subject if provided
+  if (subject) {
+    courses = courses.filter(course => course.subject === subject);
+  }
 
-  const days = [];
-  if (meeting.monday) days.push('Mon');
-  if (meeting.tuesday) days.push('Tue');
-  if (meeting.wednesday) days.push('Wed');
-  if (meeting.thursday) days.push('Thu');
-  if (meeting.friday) days.push('Fri');
-  if (meeting.saturday) days.push('Sat');
-  if (meeting.sunday) days.push('Sun');
+  // Filter for available seats
+  courses = courses.filter(hasAvailableSeats);
 
-  return {
-    days: days.join(', '),
-    startTime: formatTime(meeting.beginTime),
-    endTime: formatTime(meeting.endTime),
-    building: meeting.buildingDescription,
-    room: meeting.room,
-    startDate: meeting.startDate,
-    endDate: meeting.endDate
-  };
-};
+  // Format the results
+  return courses.map(formatCourse);
+}
 
 /**
- * Formats military time to standard 12-hour format
- * @param {string} time - Military time string (e.g., "1000")
- * @returns {string} - Formatted time (e.g., "10:00 AM")
+ * Find a specific course by CRN or course code
  */
-const formatTime = (time) => {
-  if (!time || time.length !== 4) return '';
-  
-  const hours = parseInt(time.substring(0, 2));
-  const minutes = time.substring(2, 4);
-  const period = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours;
-  
-  return `${displayHours}:${minutes} ${period}`;
-};
-
-/**
- * Searches for a specific course by CRN or course code
- * @param {Object} jsonData - The complete JSON response object
- * @param {string} searchTerm - CRN or course code (e.g., "13254" or "COMP1701")
- * @returns {Object|null} - Course object if found, null otherwise
- */
-export const findCourseByIdentifier = (jsonData, searchTerm) => {
-  if (!jsonData?.success || !Array.isArray(jsonData.data)) {
+function findCourseByIdentifier(jsonData, searchTerm) {
+  if (!jsonData || !jsonData.data) {
     return null;
   }
 
@@ -125,47 +51,96 @@ export const findCourseByIdentifier = (jsonData, searchTerm) => {
   );
 
   if (!course) {
-    console.log(`Course not found: ${searchTerm}`);
     return null;
   }
 
-  if (hasAvailableSeats(course)) {
-    console.log(`   AVAILABLE: ${course.subjectCourse} - ${course.courseTitle}`);
-    console.log(`   Seats: ${course.seatsAvailable}/${course.maximumEnrollment}`);
-    console.log(`   CRN: ${course.courseReferenceNumber}`);
-    console.log(`   Instructor: ${course.faculty[0]?.displayName || 'TBA'}`);
-  } else {
-    console.log(`   FULL: ${course.subjectCourse} - ${course.courseTitle}`);
-    console.log(`   Seats: ${course.seatsAvailable}/${course.maximumEnrollment}`);
-    if (course.waitAvailable > 0) {
-      console.log(`   Waitlist: ${course.waitAvailable} spots available`);
-    }
-  }
+  const formatted = formatCourse(course);
+  
+  // Log availability info
+  console.log('\n=== Course Found ===');
+  console.log(`Course: ${formatted.courseCode} - ${formatted.title}`);
+  console.log(`CRN: ${formatted.crn}`);
+  console.log(`Seats Available: ${formatted.seatsAvailable}/${formatted.maxEnrollment}`);
+  console.log(`Status: ${formatted.seatsAvailable > 0 ? 'AVAILABLE' : 'FULL'}`);
+  console.log('===================\n');
 
-  return course;
-};
+  return formatted;
+}
 
 /**
- * Gets all unique subjects from the data
- * @param {Object} jsonData
- * @returns {Array}
+ * Format course object into simplified structure
  */
-export const getUniqueSubjects = (jsonData) => {
-  if (!jsonData?.success || !Array.isArray(jsonData.data)) {
+function formatCourse(course) {
+  const meeting = course.meetingsFaculty?.[0] || {};
+  const meetingTime = meeting.meetingTime || {};
+  const faculty = course.faculty?.[0] || {};
+
+  return {
+    id: course.id,
+    crn: course.courseReferenceNumber,
+    courseCode: course.subjectCourse,
+    courseNumber: course.subjectCourse?.split(' ')[1] || course.courseNumber,
+    subject: course.subject,
+    title: course.courseTitle,
+    term: course.termDesc,
+    section: course.sequenceNumber,
+    instructor: faculty.displayName || 'TBA',
+    seatsAvailable: course.seatsAvailable,
+    maxEnrollment: course.maximumEnrollment,
+    currentEnrollment: course.enrollment,
+    scheduleType: course.scheduleTypeDescription,
+    credits: course.creditHourLow || course.creditHours,
+    meetingInfo: {
+      days: formatDays(meetingTime),
+      startTime: meetingTime.beginTime || '',
+      endTime: meetingTime.endTime || '',
+      building: meetingTime.building || '',
+      room: meetingTime.room || '',
+      startDate: meetingTime.startDate || '',
+      endDate: meetingTime.endDate || ''
+    },
+    campus: meetingTime.campus || course.campusDescription,
+    instructionalMethod: course.instructionalMethod,
+    waitlistSeats: course.waitAvailable,
+    waitlistCapacity: course.waitCapacity
+  };
+}
+
+/**
+ * Format days from meeting time
+ */
+function formatDays(meetingTime) {
+  if (!meetingTime) return '';
+  
+  const days = [];
+  if (meetingTime.monday) days.push('Mon');
+  if (meetingTime.tuesday) days.push('Tue');
+  if (meetingTime.wednesday) days.push('Wed');
+  if (meetingTime.thursday) days.push('Thu');
+  if (meetingTime.friday) days.push('Fri');
+  if (meetingTime.saturday) days.push('Sat');
+  if (meetingTime.sunday) days.push('Sun');
+  
+  return days.join(', ');
+}
+
+/**
+ * Get unique subjects from JSON data
+ */
+function getUniqueSubjects(jsonData) {
+  if (!jsonData || !jsonData.data) {
     return [];
   }
 
   const subjects = [...new Set(jsonData.data.map(course => course.subject))];
   return subjects.sort();
-};
+}
 
 /**
- * Gets all unique terms from the data
- * @param {Object} jsonData
- * @returns {Array}
+ * Get unique terms from JSON data
  */
-export const getUniqueTerms = (jsonData) => {
-  if (!jsonData?.success || !Array.isArray(jsonData.data)) {
+function getUniqueTerms(jsonData) {
+  if (!jsonData || !jsonData.data) {
     return [];
   }
 
@@ -180,12 +155,29 @@ export const getUniqueTerms = (jsonData) => {
   });
 
   return Array.from(termsMap.values());
-};
+}
 
-export default {
+/**
+ * Get course statistics
+ */
+function getCourseStats(jsonData) {
+  if (!jsonData || !jsonData.data) {
+    return { total: 0, available: 0, full: 0 };
+  }
+
+  const total = jsonData.data.length;
+  const available = jsonData.data.filter(hasAvailableSeats).length;
+  const full = total - available;
+
+  return { total, available, full };
+}
+
+module.exports = {
   hasAvailableSeats,
   findAvailableCourses,
   findCourseByIdentifier,
+  formatCourse,
   getUniqueSubjects,
-  getUniqueTerms
+  getUniqueTerms,
+  getCourseStats
 };
