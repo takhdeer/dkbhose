@@ -1,19 +1,25 @@
-import React, { useState } from "react";
+import { useState } from "react";
 
 export default function App() {
+
+
+  // State (Form Inputs)
   const [name, setName] = useState("");
   const [crn, setCrn] = useState("");
   const [email, setEmail] = useState("");
-  const [JSESSIONIDCookie, setJSESSIONIDCookie] = useState("");
-  const [MRUB9SSBPRODREGHACookie, setMRUB9SSBPRODREGHACookie] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
   const [progress, setProgress] = useState(0);
 
-  async function handleEnter() {
+  function handleEnter() {
     setMessage("");
     setProgress(0);
     setLoading(true);
+
+    window.open(
+      LOGIN_URL,
+      "MRULogin",
+      "width=520,height=720,noopener,noreferrer"
+    );
 
     let p = 0;
     const interval = setInterval(() => {
@@ -39,24 +45,28 @@ export default function App() {
     } catch (err) {
       clearInterval(interval);
       setLoading(false);
-      setMessage("Failed to submit. " + err.message);
-    }
+      setMessage(`Entered Data:\n Name:  ${name}\n CRN:  ${crn}\n Email:  ${email}\n`);
+    }, 1500);
   }
+
+  // Styles (Inline)
 
   const containerStyle = {
     height: "100vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#0f172a", 
+    backgroundColor: "#0f172a",
     fontFamily: "Sans-Serif",
+    padding: "16px",
   };
 
   const boxStyle = {
     backgroundColor: "#1e293b",
     padding: "30px",
     borderRadius: "16px",
-    width: "480px",
+    width: "620px",
+    maxWidth: "95vw",
     textAlign: "center",
     boxShadow: "0 25px 25px rgba(0,0,0,0.6)",
     color: "#e5e7eb",
@@ -65,51 +75,71 @@ export default function App() {
   const rowStyle = {
     display: "flex",
     alignItems: "center",
-    marginBottom: "21px",
+    marginBottom: "18px",
+    gap: "120px",
   };
 
   const labelStyle = {
-    width: "80px",
-    textAlign: "center",
-    fontWeight: "6000",
+    width: "110px",
+    textAlign: "right",
+    fontWeight: "700",
     color: "#cbd5f5",
   };
 
   const inputStyle = {
     flex: 1,
     padding: "10px",
-    borderRadius: "16px",
+    borderRadius: "12px",
     border: "1px solid #334155",
     backgroundColor: "#0f172a",
     color: "#e5e7eb",
+    outline: "none",
   };
 
   const buttonStyle = {
-    padding: "10px 20px",
+    padding: "10px 18px",
     backgroundColor: "#2563eb",
     color: "white",
     border: "none",
-    borderRadius: "6px",
+    borderRadius: "10px",
     cursor: "pointer",
     marginTop: "10px",
   };
 
+  const continueButtonStyle = { ...buttonStyle, backgroundColor: "#0ea5e9" };
+  const newEntryButtonStyle = { ...buttonStyle, backgroundColor: "#16a34a" };
+  const disabledButtonStyle = {
+    ...buttonStyle,
+    backgroundColor: "#334155",
+    cursor: "not-allowed",
+  };
+
+  // Derived Values
+  const canSubmitStep1 = name.trim() && crn.trim() && email.trim();
+  const canContinue = fieldA.trim() && fieldB.trim();
+
+  const enteredDataPreview =
+    `Entered Data:\n` +
+    `Name: ${name}\n` +
+    `CRN: ${crn}\n` +
+    `Email: ${email}\n`;
+
   return (
     <div style={containerStyle}>
       <div style={boxStyle}>
-        {/* Title */}
         <div
           style={{
             fontSize: "28px",
-            fontWeight: "700",
-            marginBottom: "20px",
+            fontWeight: "800",
+            marginBottom: "18px",
             color: "#38bdf8",
           }}
         >
           MRU Registration
         </div>
 
-        {!loading && message === "" && (
+        {/* STEP 1: Form */}
+        {!loading && step === 1 && (
           <>
             <div style={rowStyle}>
               <div style={labelStyle}>Name:</div>
@@ -138,28 +168,13 @@ export default function App() {
               />
             </div>
 
-            <div style={rowStyle}>
-              <div style={labelStyle}>JSESSIONID Cookie:</div>
-              <input
-                style={inputStyle}
-                value={JSESSIONIDCookie}
-                onChange={(e) => setJSESSIONIDCookie(e.target.value)}
-              />
-            </div>
-            <div style={rowStyle}>
-              <div style={labelStyle}>MRUB9SSBPRODREGHA Cookie:</div>
-              <input
-                style={inputStyle}
-                value={MRUB9SSBPRODREGHACookie}
-                onChange={(e) => setMRUB9SSBPRODREGHACookie(e.target.value)}
-              />
-            </div>
             <button style={buttonStyle} onClick={handleEnter}>
               Enter
             </button>
           </>
         )}
 
+        {/* LOADING Bar  */}
         {loading && (
           <>
             <div style={{ fontSize: "20px", marginBottom: "10px" }}>
@@ -167,7 +182,6 @@ export default function App() {
             </div>
             <div>Please wait while we process your request.</div>
 
-            {/* Loading Bar */}
             <div style={{ marginTop: "20px", width: "100%" }}>
               <div
                 style={{
@@ -199,11 +213,37 @@ export default function App() {
           </>
         )}
 
-        {!loading && message !== "" && (
+        {/* STEP 2 */}
+        {!loading && step === 2 && (
           <>
-            <div style={{ marginBottom: "20px", whiteSpace: "pre-line" }}>
-          {message}
-          </div>
+            <div
+              style={{
+                marginBottom: "18px",
+                whiteSpace: "pre-line",
+                textAlign: "center",
+                color: "#e5e7eb",
+              }}
+            >
+              {enteredDataPreview}
+            </div>
+
+            <div style={rowStyle}>
+              <div style={labelStyle}>JSESSIONID:</div>
+              <input
+                style={inputStyle}
+                value={fieldA}
+                onChange={(e) => setFieldA(e.target.value)}
+              />
+            </div>
+
+            <div style={rowStyle}>
+              <div style={labelStyle}>MRUB9SSBPRODREGHA:</div>
+              <input
+                style={inputStyle}
+                value={fieldB}
+                onChange={(e) => setFieldB(e.target.value)}
+              />
+            </div>
 
             <button
               style={{ ...buttonStyle, backgroundColor: "#2563eb" }}
@@ -211,8 +251,6 @@ export default function App() {
                 setName("");
                 setCrn("");
                 setEmail("");
-                setJSESSIONIDCookie("");
-                setMRUB9SSBPRODREGHACookie("");
                 setMessage("");
               }}
             >
