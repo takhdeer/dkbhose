@@ -1,0 +1,15 @@
+#dependencies
+node_modules/
+
+#invironment variables
+.env
+
+#nodeEmail files
+package-lock.json
+package.json
+
+# logs
+npm-debug.log*
+
+#OS files
+.DS_store
