@@ -52,7 +52,7 @@ export default function App() {
     } catch (err) {
       clearInterval(interval);
       setLoading(false);
-      setMessage(`Error: ${err.message}\n\nMake sure the server is running on http://localhost:5000`);
+      setMessage(`Error: ${err.message}\n\nMake sure the server is running on http://localhost:3001`);
     }
   }
 
