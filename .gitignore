@@ -12,4 +12,4 @@ package.json
 npm-debug.log*
 
 #OS files
-.DS_store
+.DS_Store
