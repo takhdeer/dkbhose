@@ -1,25 +1,22 @@
 import { useState } from "react";
 
 export default function App() {
-
-
   // State (Form Inputs)
   const [name, setName] = useState("");
   const [crn, setCrn] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [message, setMessage] = useState("");
+  
+  // Cookies
+  const [JSESSIONIDCookie, setJSESSIONIDCookie] = useState("");
+  const [MRUB9SSBPRODREGHACookie, setMRUB9SSBPRODREGHACookie] = useState("");
 
-  function handleEnter() {
+  async function handleSubmit() {
     setMessage("");
     setProgress(0);
     setLoading(true);
-
-    window.open(
-      LOGIN_URL,
-      "MRULogin",
-      "width=520,height=720,noopener,noreferrer"
-    );
 
     let p = 0;
     const interval = setInterval(() => {
@@ -34,25 +31,44 @@ export default function App() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, crn, email, JSESSIONIDCookie, MRUB9SSBPRODREGHACookie }),
+        body: JSON.stringify({ 
+          name, 
+          crn, 
+          email, 
+          JSESSIONIDCookie, 
+          MRUB9SSBPRODREGHACookie 
+        }),
       });
       const data = await response.json();
       setTimeout(() => {
         clearInterval(interval);
         setLoading(false);
-        setMessage(data.success ? `Submitted!\n Name:  ${name}\n CRN:  ${crn}\n Email:  ${email}\n` : `Error: ${data.message}`);
+        setMessage(
+          data.success 
+            ? `Submitted!\nName: ${name}\nCRN: ${crn}\nEmail: ${email}\n\nCourse getter is running and writing to classInfo.json` 
+            : `Error: ${data.message}`
+        );
       }, 1500);
     } catch (err) {
       clearInterval(interval);
       setLoading(false);
-      setMessage(`Entered Data:\n Name:  ${name}\n CRN:  ${crn}\n Email:  ${email}\n`);
-    }, 1500);
+      setMessage(`Error: ${err.message}\n\nMake sure the server is running on http://localhost:5000`);
+    }
+  }
+
+  function handleReset() {
+    setName("");
+    setCrn("");
+    setEmail("");
+    setJSESSIONIDCookie("");
+    setMRUB9SSBPRODREGHACookie("");
+    setMessage("");
+    setProgress(0);
   }
 
   // Styles (Inline)
-
   const containerStyle = {
-    height: "100vh",
+    minHeight: "100vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
@@ -76,14 +92,15 @@ export default function App() {
     display: "flex",
     alignItems: "center",
     marginBottom: "18px",
-    gap: "120px",
+    gap: "20px",
   };
 
   const labelStyle = {
-    width: "110px",
+    width: "180px",
     textAlign: "right",
     fontWeight: "700",
     color: "#cbd5f5",
+    fontSize: "14px",
   };
 
   const inputStyle = {
@@ -94,20 +111,22 @@ export default function App() {
     backgroundColor: "#0f172a",
     color: "#e5e7eb",
     outline: "none",
+    fontSize: "14px",
   };
 
   const buttonStyle = {
-    padding: "10px 18px",
+    padding: "12px 24px",
     backgroundColor: "#2563eb",
     color: "white",
     border: "none",
     borderRadius: "10px",
     cursor: "pointer",
     marginTop: "10px",
+    fontSize: "16px",
+    fontWeight: "600",
+    marginRight: "10px",
   };
 
-  const continueButtonStyle = { ...buttonStyle, backgroundColor: "#0ea5e9" };
-  const newEntryButtonStyle = { ...buttonStyle, backgroundColor: "#16a34a" };
   const disabledButtonStyle = {
     ...buttonStyle,
     backgroundColor: "#334155",
@@ -115,14 +134,7 @@ export default function App() {
   };
 
   // Derived Values
-  const canSubmitStep1 = name.trim() && crn.trim() && email.trim();
-  const canContinue = fieldA.trim() && fieldB.trim();
-
-  const enteredDataPreview =
-    `Entered Data:\n` +
-    `Name: ${name}\n` +
-    `CRN: ${crn}\n` +
-    `Email: ${email}\n`;
+  const canSubmit = name.trim() && crn.trim() && email.trim() && JSESSIONIDCookie.trim() && MRUB9SSBPRODREGHACookie.trim();
 
   return (
     <div style={containerStyle}>
@@ -135,11 +147,11 @@ export default function App() {
             color: "#38bdf8",
           }}
         >
-          MRU Registration
+          MRU Course Registration
         </div>
 
-        {/* STEP 1: Form */}
-        {!loading && step === 1 && (
+        {/* Form */}
+        {!loading && !message && (
           <>
             <div style={rowStyle}>
               <div style={labelStyle}>Name:</div>
@@ -147,6 +159,7 @@ export default function App() {
                 style={inputStyle}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                placeholder="Enter your name"
               />
             </div>
 
@@ -156,6 +169,7 @@ export default function App() {
                 style={inputStyle}
                 value={crn}
                 onChange={(e) => setCrn(e.target.value)}
+                placeholder="Enter course CRN"
               />
             </div>
 
@@ -165,16 +179,42 @@ export default function App() {
                 style={inputStyle}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                type="email"
               />
             </div>
 
-            <button style={buttonStyle} onClick={handleEnter}>
-              Enter
+            <div style={rowStyle}>
+              <div style={labelStyle}>JSESSIONID:</div>
+              <input
+                style={inputStyle}
+                value={JSESSIONIDCookie}
+                onChange={(e) => setJSESSIONIDCookie(e.target.value)}
+                placeholder="Enter JSESSIONID cookie"
+              />
+            </div>
+
+            <div style={rowStyle}>
+              <div style={labelStyle}>MRUB9SSBPRODREGHA:</div>
+              <input
+                style={inputStyle}
+                value={MRUB9SSBPRODREGHACookie}
+                onChange={(e) => setMRUB9SSBPRODREGHACookie(e.target.value)}
+                placeholder="Enter MRUB9SSBPRODREGHA cookie"
+              />
+            </div>
+
+            <button 
+              style={canSubmit ? buttonStyle : disabledButtonStyle} 
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+            >
+              Submit
             </button>
           </>
         )}
 
-        {/* LOADING Bar  */}
+        {/* LOADING Bar */}
         {loading && (
           <>
             <div style={{ fontSize: "20px", marginBottom: "10px" }}>
@@ -213,8 +253,8 @@ export default function App() {
           </>
         )}
 
-        {/* STEP 2 */}
-        {!loading && step === 2 && (
+        {/* Success/Error Message */}
+        {!loading && message && (
           <>
             <div
               style={{
@@ -222,37 +262,17 @@ export default function App() {
                 whiteSpace: "pre-line",
                 textAlign: "center",
                 color: "#e5e7eb",
+                padding: "20px",
+                backgroundColor: "#0f172a",
+                borderRadius: "10px",
               }}
             >
-              {enteredDataPreview}
-            </div>
-
-            <div style={rowStyle}>
-              <div style={labelStyle}>JSESSIONID:</div>
-              <input
-                style={inputStyle}
-                value={fieldA}
-                onChange={(e) => setFieldA(e.target.value)}
-              />
-            </div>
-
-            <div style={rowStyle}>
-              <div style={labelStyle}>MRUB9SSBPRODREGHA:</div>
-              <input
-                style={inputStyle}
-                value={fieldB}
-                onChange={(e) => setFieldB(e.target.value)}
-              />
+              {message}
             </div>
 
             <button
-              style={{ ...buttonStyle, backgroundColor: "#2563eb" }}
-              onClick={() => {
-                setName("");
-                setCrn("");
-                setEmail("");
-                setMessage("");
-              }}
+              style={{ ...buttonStyle, backgroundColor: "#16a34a" }}
+              onClick={handleReset}
             >
               New Entry
             </button>
