@@ -15,7 +15,5 @@ const {findCourseByIdentifier } = require('./courseAvailabilityService')
 const { 
     initializeEmail,
     sendSeatAvailableEmail,
-    sendEnrollmentSuccessEmail,
-    sendEnrollmentFailureEmail
 } = require ('./emailService')
 
