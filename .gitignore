@@ -14,13 +14,16 @@ npm-debug.log*
 #OS files
 .DS_Store
 
-#other start/ stop files
 #bat file 
 start.bat
 stop.bat
+
 #shfiles
 start.sh
 stop.sh
+
 #js files
 stop.js
 
+#class-info file
+classInfo.json
