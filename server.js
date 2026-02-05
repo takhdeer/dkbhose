@@ -8,7 +8,7 @@ const puppeteer = require('puppeteer');
 const { runCourseGetter, stopMonitoring } = require('./courseGetter');
 
 const app = express();
-const PORT = 3001;
+const PORT = 5000;
 
 app.use(cors());
 app.use(bodyParser.json());

@@ -26,7 +26,7 @@ export default function App() {
     }, 30);
 
     try {
-      const response = await fetch("http://localhost:3001/api/extract-cookies", {
+      const response = await fetch("http://localhost:5000/api/extract-cookies", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -325,5 +325,4 @@ export default function App() {
       </div>
     </div>
   );
-  }
-};
+}
