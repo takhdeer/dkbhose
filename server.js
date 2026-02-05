@@ -8,7 +8,7 @@ const emailService = require('./emailService');
 const courseMonitor = require('./courseMonitorWithEmail');
 const courseGetter = require('./courseGetter');
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 
 
 app.use(cors());
