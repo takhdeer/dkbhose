@@ -8,10 +8,47 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
-  
+
   // Cookies
   const [JSESSIONIDCookie, setJSESSIONIDCookie] = useState("");
   const [MRUB9SSBPRODREGHACookie, setMRUB9SSBPRODREGHACookie] = useState("");
+
+  async function extractCookiesWithPuppeteer() {
+    setMessage("");
+    setProgress(0);
+    setLoading(true);
+
+    let p = 0;
+    const interval = setInterval(() => {
+      p += 2;
+      if (p >= 100) p = 100;
+      setProgress(p);
+    }, 30);
+
+    try {
+      const response = await fetch("http://localhost:3001/api/extract-cookies", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setJSESSIONIDCookie(data.jsessionid);
+        setMRUB9SSBPRODREGHACookie(data.mrub9);
+        setMessage(`✅ Cookies extracted successfully!\n\nJSESSIONID: ${data.jsessionid}\nMRUB9SSBPRODREGHA: ${data.mrub9}`);
+      } else {
+        setMessage(`❌ Error: ${data.message}`);
+      }
+    } catch (err) {
+      setMessage(`❌ Error: ${err.message}\n\nMake sure the server is running on http://localhost:3001`);
+    } finally {
+      clearInterval(interval);
+      setLoading(false);
+    }
+  }
 
   async function handleSubmit() {
     setMessage("");
@@ -52,7 +89,7 @@ export default function App() {
     } catch (err) {
       clearInterval(interval);
       setLoading(false);
-      setMessage(`Error: ${err.message}\n\nMake sure the server is running on http://localhost:5000`);
+      setMessage(`Error: ${err.message}\n\nMake sure the server is running on http://localhost:3001`);
     }
   }
 
@@ -205,6 +242,13 @@ export default function App() {
             </div>
 
             <button 
+              style={{...buttonStyle, backgroundColor: "#f59e0b"}}
+              onClick={extractCookiesWithPuppeteer}
+            >
+              Extract Cookies with Puppeteer
+            </button>
+
+            <button 
               style={canSubmit ? buttonStyle : disabledButtonStyle} 
               onClick={handleSubmit}
               disabled={!canSubmit}
@@ -281,4 +325,5 @@ export default function App() {
       </div>
     </div>
   );
-}
+  }
+};

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MRU Authentication</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            text-align: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            max-width: 600px;
+            margin: 50px auto;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            margin-top: 0;
+            font-size: 24px;
+        }
+        p {
+            color: #666;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .success {
+            background-color: #d1fae5;
+            color: #065f46;
+            border: 1px solid #6ee7b7;
+        }
+        .info {
+            background-color: #dbeafe;
+            color: #0c4a6e;
+            border: 1px solid #93c5fd;
+        }
+        .error {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #2563eb;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2 id="title">MRU Authentication</h2>
+        <div class="spinner"></div>
+        <div id="status" class="status info">Initializing login process...</div>
+    </div>
+
+    <script>
+        let loginWindow = null;
+        let registrationWindow = null;
+
+        function log(message) {
+            console.log('[MRU_AUTH] ' + message);
+        }
+
+        function updateStatus(message, type = 'info') {
+            document.getElementById('status').textContent = message;
+            document.getElementById('status').className = 'status ' + type;
+            log(message);
+        }
+
+        function startAuthentication() {
+            const loginUrl = "https://auth.mtroyal.ca/authenticationendpoint/login.do?Name=PreLoginRequestProcessor&commonAuthCallerPath=%252Fcas%252Flogin&forceAuth=true&passiveAuth=false&service=https%3A%2F%2Fwww.mymru.ca%2F&tenantDomain=carbon.super&sessionDataKey=6ab1811f-f753-4656-a3e5-d21652ce23c0&relyingParty=Luminis5-prod-www-mymru-CAS&type=cas&sp=Luminis5-prod-www-mymru-CAS&isSaaSApp=false&authenticators=BasicAuthenticator%3ALOCAL";
+            
+            updateStatus('⏳ Opening MRU login page...');
+            loginWindow = window.open(loginUrl, "MRU_Login", "width=800,height=750,resizable=yes,scrollbars=yes");
+            
+            if (!loginWindow || loginWindow.closed || typeof loginWindow.closed === 'undefined') {
+                updateStatus('✗ Pop-up window was blocked. Please enable pop-ups and reload this page.', 'error');
+                return;
+            }
+
+            updateStatus('⏳ Please log in with your credentials in the opened window...');
+
+            // Monitor login window
+            let loginCheckCount = 0;
+            let loginCheckInterval = setInterval(() => {
+                loginCheckCount++;
+                try {
+                    if (loginWindow && loginWindow.closed) {
+                        clearInterval(loginCheckInterval);
+                        log('Login window closed - proceeding to registration');
+                        setTimeout(() => openRegistrationWindow(), 1000);
+                    }
+                } catch (e) {
+                    log('Error checking login window: ' + e.message);
+                }
+
+                // Timeout after 10 minutes
+                if (loginCheckCount > 300) {
+                    clearInterval(loginCheckInterval);
+                    updateStatus('✗ Login timeout. Please try again.', 'error');
+                }
+            }, 2000);
+        }
+
+        function openRegistrationWindow() {
+            const registrationUrl = "https://ban9ssb-prod.mtroyal.ca/StudentRegistrationSsb/ssb/registration";
+            
+            updateStatus('⏳ Opening Banner registration page...');
+            registrationWindow = window.open(registrationUrl, "MRU_Registration", "width=1000,height=800,resizable=yes,scrollbars=yes");
+            
+            if (!registrationWindow || registrationWindow.closed || typeof registrationWindow.closed === 'undefined') {
+                updateStatus('✗ Could not open registration page. Please allow pop-ups.', 'error');
+                return;
+            }
+
+            updateStatus('⏳ Registration page opened. Waiting for page to load and cookies to be set...');
+            
+            // Wait for registration page to fully load and cookies to be available
+            setTimeout(() => {
+                extractAndSendCookies();
+            }, 3000);
+        }
+
+        function extractAndSendCookies() {
+            try {
+                log('Attempting to extract cookies...');
+                
+                // Get all cookies from current domain
+                const allCookies = document.cookie;
+                log('All cookies: ' + (allCookies || 'NONE'));
+                
+                // Extract specific cookies using regex
+                const jsessionidMatch = allCookies.match(/JSESSIONID=([^;]+)/);
+                const mrub9Match = allCookies.match(/MRUB9SSBPRODREGHA=([^;]+)/);
+                
+                const jsessionid = jsessionidMatch ? jsessionidMatch[1] : '';
+                const mrub9 = mrub9Match ? mrub9Match[1] : '';
+                
+                log('JSESSIONID: ' + (jsessionid || 'NOT FOUND'));
+                log('MRUB9SSBPRODREGHA: ' + (mrub9 || 'NOT FOUND'));
+                
+                if (jsessionid && mrub9) {
+                    log('✓ Cookies found! Sending to parent window...');
+                    console.log('EXTRACTED_JSESSIONID:', jsessionid);
+                    console.log('EXTRACTED_MRUB9:', mrub9);
+                    
+                    // Send to parent window
+                    window.opener.postMessage({
+                        type: 'MRU_COOKIES',
+                        jsessionid: jsessionid,
+                        mrub9: mrub9
+                    }, '*');
+                    
+                    updateStatus('✓ Cookies extracted and sent! Closing window...', 'success');
+                    
+                    // Auto-close after 2 seconds
+                    setTimeout(() => window.close(), 2000);
+                } else {
+                    log('⚠ One or both cookies not found. Retrying in 3 seconds...');
+                    updateStatus('⚠ Cookies not found yet. Retrying...', 'info');
+                    
+                    // Retry after 3 seconds
+                    setTimeout(() => extractAndSendCookies(), 3000);
+                }
+            } catch (error) {
+                log('✗ Error extracting cookies: ' + error.message);
+                updateStatus('✗ Error: ' + error.message, 'error');
+            }
+        }
+
+        // Start the authentication process immediately on page load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                startAuthentication();
+            }, 500);
+        });
+
+        // Also start if user just opens this HTML file
+        startAuthentication();
+    </script>
+</body>
+</html>
