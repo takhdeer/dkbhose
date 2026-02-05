@@ -35,7 +35,7 @@ export default function App() {
 
   async function checkServerHealth() {
     try {
-      const response = await fetch("http://localhost:5000/api/health");
+      const response = await fetch("http://localhost:3001/api/health");
       const data = await response.json();
       setEmailConfigured(data.emailConfigured);
     } catch (error) {
@@ -46,7 +46,7 @@ export default function App() {
   async function loadDashboardData() {
     try {
       // Load monitors
-      const monitorsRes = await fetch("http://localhost:5000/api/monitors");
+      const monitorsRes = await fetch("http://localhost:3001/api/monitors");
       const monitorsData = await monitorsRes.json();
       if (monitorsData.success) {
         setMonitors(monitorsData.monitors);
@@ -54,7 +54,7 @@ export default function App() {
       }
       
       // Load course info
-      const courseRes = await fetch("http://localhost:5000/api/course-info");
+      const courseRes = await fetch("http://localhost:3001/api/course-info");
       const courseData = await courseRes.json();
       setCourseInfo(courseData);
     } catch (error) {
@@ -70,7 +70,7 @@ export default function App() {
 
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:5000/api/configure-email", {
+      const response = await fetch("http://localhost:3001/api/configure-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password: emailPassword }),
@@ -106,7 +106,7 @@ export default function App() {
     }, 30);
 
     try {
-      const response = await fetch("http://localhost:5000/api/submit", {
+      const response = await fetch("http://localhost:3001/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -137,13 +137,13 @@ export default function App() {
     } catch (err) {
       clearInterval(interval);
       setLoading(false);
-      setMessage(`Error: ${err.message}\n\nMake sure the server is running on http://localhost:5000`);
+      setMessage(`Error: ${err.message}\n\nMake sure the server is running on http://localhost:3001`);
     }
   }
 
   async function stopMonitor(monitorId) {
     try {
-      const response = await fetch(`http://localhost:5000/api/stop-monitor/${monitorId}`, {
+      const response = await fetch(`http://localhost:3001/api/stop-monitor/${monitorId}`, {
         method: "POST",
       });
       
