@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { collection, addDoc } from "firebase/firestore";
+import { db } from "./firebase";
 
 export default function App() {
   // Form State
@@ -94,52 +96,39 @@ export default function App() {
   }
 
   async function handleSubmit() {
-    setMessage("");
-    setProgress(0);
-    setLoading(true);
+  setMessage("");
+  setProgress(0);
+  setLoading(true);
 
-    let p = 0;
-    const interval = setInterval(() => {
-      p += 2;
-      if (p >= 100) p = 100;
-      setProgress(p);
-    }, 30);
+  let p = 0;
+  const interval = setInterval(() => {
+    p += 2;
+    if (p >= 100) p = 100;
+    setProgress(p);
+  }, 30);
 
-    try {
-      const response = await fetch("http://localhost:3001/api/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          name, 
-          crn, 
-          email, 
-          JSESSIONIDCookie, 
-          MRUB9SSBPRODREGHACookie,
-          emailPassword: !emailConfigured ? emailPassword : undefined
-        }),
-      });
-      
-      const data = await response.json();
-      
-      setTimeout(() => {
-        clearInterval(interval);
-        setLoading(false);
-        setMessage(
-          data.success 
-            ? `Submitted!\nName: ${name}\nCRN: ${crn}\nEmail: ${email}\n\nCourse monitoring is now active!\nYou'll receive an email when seats become available.` 
-            : `Error: ${data.message}`
-        );
-        
-        if (data.success) {
-          loadDashboardData();
-        }
-      }, 1500);
-    } catch (err) {
+  try {
+    await addDoc(collection(db, "tracked_courses"), {
+      name,
+      crn,
+      email,
+      JSESSIONIDCookie,
+      MRUB9SSBPRODREGHACookie,
+      createdAt: new Date(),
+    });
+
+    setTimeout(() => {
       clearInterval(interval);
       setLoading(false);
-      setMessage(`Error: ${err.message}\n\nMake sure the server is running on http://localhost:3001`);
-    }
+      setMessage(`✅ Submitted!\nName: ${name}\nCRN: ${crn}\nEmail: ${email}\n\nNow tracking this course.`);
+    }, 1500);
+
+  } catch (err) {
+    clearInterval(interval);
+    setLoading(false);
+    setMessage(`❌ Error: ${err.message}`);
   }
+}
 
   async function stopMonitor(monitorId) {
     try {
