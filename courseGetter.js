@@ -1,6 +1,13 @@
-const fetch = require('node-fetch');
 const fs = require('fs').promises;
 const path = require('path');
+
+async function getFetch() {
+  if (typeof fetch !== 'undefined') {
+    return fetch;
+  }
+  const nodeFetch = await import('node-fetch');
+  return nodeFetch.default;
+}
 
 /**
  * Fetch course data from MRU registration system
@@ -11,7 +18,8 @@ async function fetchCourseData(crn, jsessionid, mruCookie) {
   console.log(` Fetching data for CRN: ${crn}`);
   
   try {
-    const response = await fetch(url, {
+    const fetchImpl = await getFetch();
+    const response = await fetchImpl(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
