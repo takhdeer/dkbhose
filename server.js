@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs').promises;
+const {getMRUcookies, clearcookies} = require('./cookieExtractor');
 
 const emailService = require('./emailService');
 const courseGetter = require('./courseGetter');
@@ -44,29 +45,33 @@ app.post('/api/configure-email', async (req, res) => {
   }
 });
 
+/**
+ * Submit form and start monitoring - integrates with your existing codemm
+ */
 app.post('/api/submit', async (req, res) => {
-  try {
-    const {
-      name,
-      crn,
-      email,
-      JSESSIONIDCookie,
-      MRUB9SSBPRODREGHACookie,
-      emailPassword
-    } = req.body;
+  try {                                          // ← try opens here
+    let { JSESSIONIDCookie, MRUB9SSBPRODREGHACookie } = req.body;
+    const { name: StudentName, crn, email, emailPassword, mruUsername, mruPassword } = req.body;
+
+    // Auto-fetch cookies if not provided
+    if ((!JSESSIONIDCookie || !MRUB9SSBPRODREGHACookie) && mruUsername && mruPassword) {
+      const cookies = await getMRUCookies(mruUsername, mruPassword);
+      JSESSIONIDCookie = cookies.jsessionid;
+      MRUB9SSBPRODREGHACookie = cookies.mruCookie;
+    }
 
     if (!name || !crn || !email || !JSESSIONIDCookie || !MRUB9SSBPRODREGHACookie) {
-      return res.status(400).json({
-        success: false,
-        message: 'All fields are required'
-      });
+      return res.status(400).json({ success: false, message: 'All fields are required' });
     }
+    //                                           ← no }); here, stay inside the function
 
     if (!emailService.isConfigured() && emailPassword) {
       await emailService.configure(email, emailPassword);
     }
 
-    const trackedCourse = await db.addTrackedCourse({
+    // Create session data
+    const sessionData = {
+      StudentName,
       crn,
       userName: name,
       userEmail: email,
@@ -76,34 +81,42 @@ app.post('/api/submit', async (req, res) => {
       }
     });
 
+    // Fetch initial course data
     try {
-      await courseGetter.fetchCourseData(
-        crn,
-        JSESSIONIDCookie,
-        MRUB9SSBPRODREGHACookie
-      );
+      await courseGetter.fetchCourseData(crn, JSESSIONIDCookie, MRUB9SSBPRODREGHACookie);
     } catch (error) {
       console.error('Error fetching initial course data:', error);
     }
 
-    if (emailService.isConfigured()) {
-      await emailService.sendConfirmation(email, name, crn, trackedCourse.id);
+    // Start monitoring
+    courseMonitor.startMonitoring({
+      crn, email, StudentName,
+      cookies: {
+        JSESSIONID: JSESSIONIDCookie,
+        MRUB9SSBPRODREGHA: MRUB9SSBPRODREGHACookie
+      },
+      sessionId,
+      onNotificationSent: () => {
+        const session = activeSessions.get(sessionId);
+        if (session) session.notificationSent = true;
+      }
+    });
+
+    // Send confirmation email
+    if (isEmailConfigured) {
+      await emailService.sendConfirmation(email, StudentName  , crn, sessionId);
     }
 
-    res.json({
-      success: true,
-      message: 'Course monitoring started successfully',
-      sessionId: trackedCourse.id
-    });
-  } catch (error) {
-    console.error('Error in submit:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
-  }
-});
+    res.json({ success: true, message: 'Course monitoring started successfully', sessionId });
 
+  } catch (error) {                              
+    console.error('Error in submit:', error);
+    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+  }
+});                                              
+/**
+ * Get current course information from classInfo.json
+ */
 app.get('/api/course-info', async (req, res) => {
   try {
     const classInfoPath = path.join(__dirname, 'classInfo.json');
@@ -199,28 +212,23 @@ app.get('/api/status', (req, res) => {
   });
 });
 
-app.post('/api/stop-monitor/:id', async (req, res) => {
+app.post('/api/auto-login', async (req,res) => {
   try {
-    const updated = await db.deactivateTrackedCourse(req.params.id);
-    if (!updated) {
-      return res.status(404).json({
-        success: false,
-        message: 'Monitor not found'
-      });
+    const {username , password} = req.body;
+    if (!username || password) {
+      return res.status(400).json({ success: false, message: 'Username and password required' });
     }
 
-    res.json({
-      success: true,
-      message: 'Monitor stopped',
-      monitor: updated
-    });
+    const cookies = await getMRUcookies(username, password);
+    res.json({ sucess: true, ...cookies});
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Auto-login failed", error);
+    res.status(500).json({success: false, message: error.message});
   }
-});
+}); 
 
-const server = app.listen(PORT, () => {
-  pollingEngine.start();
+// Start server
+app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📧 Email configured: ${emailService.isConfigured()}`);
   console.log(`🔍 Ready to monitor courses!`);
