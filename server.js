@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs').promises;
+const {getMRUcookies, clearcookies} = require('./cookieExtractor');
 
 // Import your existing services
 const emailService = require('./emailService');
@@ -61,26 +62,24 @@ app.post('/api/configure-email', async (req, res) => {
 });
 
 /**
- * Submit form and start monitoring - integrates with your existing code
+ * Submit form and start monitoring - integrates with your existing codemm
  */
 app.post('/api/submit', async (req, res) => {
-  try {
-    const { 
-      name, 
-      crn, 
-      email, 
-      JSESSIONIDCookie, 
-      MRUB9SSBPRODREGHACookie,
-      emailPassword 
-    } = req.body;
+  try {                                          // ← try opens here
+    let { JSESSIONIDCookie, MRUB9SSBPRODREGHACookie } = req.body;
+    const { name: StudentName, crn, email, emailPassword, mruUsername, mruPassword } = req.body;
 
-    // Validate required fields
-    if (!name || !crn || !email || !JSESSIONIDCookie || !MRUB9SSBPRODREGHACookie) {
-      return res.status(400).json({
-        success: false,
-        message: 'All fields are required'
-      });
+    // Auto-fetch cookies if not provided
+    if ((!JSESSIONIDCookie || !MRUB9SSBPRODREGHACookie) && mruUsername && mruPassword) {
+      const cookies = await getMRUCookies(mruUsername, mruPassword);
+      JSESSIONIDCookie = cookies.jsessionid;
+      MRUB9SSBPRODREGHACookie = cookies.mruCookie;
     }
+
+    if (!name || !crn || !email || !JSESSIONIDCookie || !MRUB9SSBPRODREGHACookie) {
+      return res.status(400).json({ success: false, message: 'All fields are required' });
+    }
+    //                                           ← no }); here, stay inside the function
 
     // If email not configured and password provided, configure it
     if (!isEmailConfigured && emailPassword) {
@@ -90,7 +89,7 @@ app.post('/api/submit', async (req, res) => {
 
     // Create session data
     const sessionData = {
-      name,
+      StudentName,
       crn,
       email,
       cookies: {
@@ -105,22 +104,16 @@ app.post('/api/submit', async (req, res) => {
     const sessionId = `${crn}-${Date.now()}`;
     activeSessions.set(sessionId, sessionData);
 
-    // Start course getter to fetch initial data
+    // Fetch initial course data
     try {
-      await courseGetter.fetchCourseData(
-        crn,
-        JSESSIONIDCookie,
-        MRUB9SSBPRODREGHACookie
-      );
+      await courseGetter.fetchCourseData(crn, JSESSIONIDCookie, MRUB9SSBPRODREGHACookie);
     } catch (error) {
       console.error('Error fetching initial course data:', error);
     }
 
-    // Start monitoring with your existing courseMonitor
+    // Start monitoring
     courseMonitor.startMonitoring({
-      crn,
-      email,
-      name,
+      crn, email, StudentName,
       cookies: {
         JSESSIONID: JSESSIONIDCookie,
         MRUB9SSBPRODREGHA: MRUB9SSBPRODREGHACookie
@@ -128,32 +121,22 @@ app.post('/api/submit', async (req, res) => {
       sessionId,
       onNotificationSent: () => {
         const session = activeSessions.get(sessionId);
-        if (session) {
-          session.notificationSent = true;
-        }
+        if (session) session.notificationSent = true;
       }
     });
 
-    // Send confirmation email if email is configured
+    // Send confirmation email
     if (isEmailConfigured) {
-      await emailService.sendConfirmation(email, name, crn, sessionId);
+      await emailService.sendConfirmation(email, StudentName  , crn, sessionId);
     }
 
-    res.json({
-      success: true,
-      message: 'Course monitoring started successfully',
-      sessionId
-    });
+    res.json({ success: true, message: 'Course monitoring started successfully', sessionId });
 
-  } catch (error) {
+  } catch (error) {                              
     console.error('Error in submit:', error);
-    res.status(500).json({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
+    res.status(500).json({ success: false, message: error.message || 'Internal server error' });
   }
-});
-
+});                                              
 /**
  * Get current course information from classInfo.json
  */
@@ -299,6 +282,21 @@ app.get('/api/status', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+
+app.post('/api/auto-login', async (req,res) => {
+  try {
+    const {username , password} = req.body;
+    if (!username || password) {
+      return res.status(400).json({ success: false, message: 'Username and password required' });
+    }
+
+    const cookies = await getMRUcookies(username, password);
+    res.json({ sucess: true, ...cookies});
+  } catch (error) {
+    console.error("Auto-login failed", error);
+    res.status(500).json({success: false, message: error.message});
+  }
+}); 
 
 // Start server
 app.listen(PORT, () => {
