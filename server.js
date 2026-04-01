@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs').promises;
-const {getMRUcookies, clearcookies} = require('./cookieExtractor');
+const {getMRUCookies, clearCookies} = require('./cookieExtractor');
 
 // Import your existing services
 const emailService = require('./emailService');
@@ -76,7 +76,7 @@ app.post('/api/submit', async (req, res) => {
       MRUB9SSBPRODREGHACookie = cookies.mruCookie;
     }
 
-    if (!name || !crn || !email || !JSESSIONIDCookie || !MRUB9SSBPRODREGHACookie) {
+    if (!StudentName || !crn || !email || !JSESSIONIDCookie || !MRUB9SSBPRODREGHACookie) {
       return res.status(400).json({ success: false, message: 'All fields are required' });
     }
     //                                           ← no }); here, stay inside the function

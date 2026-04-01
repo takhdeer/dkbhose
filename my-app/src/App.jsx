@@ -538,6 +538,8 @@ function ParticleCanvas() {
 export default function App() {
   const [name, setName] = useState("");
   const [crn, setCrn] = useState("");
+  const [mruUsername, setMruUsername] = useState("");
+  const [mruPassword, setMruPassword] = useState("");
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -586,10 +588,46 @@ export default function App() {
     setMessage(""); setProgress(0); setLoading(true);
     let p = 0;
     const iv = setInterval(() => { p += 2; if (p >= 100) p = 100; setProgress(p); }, 30);
+  
     try {
-      await addDoc(collection(db, "tracked_courses"), { name, crn, email, createdAt: new Date() });
-      setTimeout(() => { clearInterval(iv); setLoading(false); setMessage(`✅ Tracking started!\n\nName: ${name}\nCRN: ${crn}\nEmail: ${email}\n\nYou'll be notified the moment a seat opens.`); }, 1500);
-    } catch (err) { clearInterval(iv); setLoading(false); setMessage(`❌ Error: ${err.message}`); }
+      // Save name, crn, email to Firestore (no passwords)
+      await addDoc(collection(db, "tracked_courses"), {
+        name,
+        crn,
+        email,
+        createdAt: new Date()
+      });
+  
+      // Pass MRU credentials directly to backend (never stored)
+      const response = await fetch("http://localhost:3001/api/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          crn,
+          email,
+          emailPassword,
+          mruUsername,
+          mruPassword
+        })
+      });
+  
+      const data = await response.json();
+      clearInterval(iv);
+      setLoading(false);
+  
+      if (data.success) {
+        setMessage(`✅ Tracking started!\n\nName: ${name}\nCRN: ${crn}\nEmail: ${email}\n\nYou'll be notified the moment a seat opens.`);
+        loadDashboardData();
+      } else {
+        setMessage(`❌ ${data.message}`);
+      }
+  
+    } catch (err) {
+      clearInterval(iv);
+      setLoading(false);
+      setMessage(`❌ Error: ${err.message}`);
+    }
   }
 
   async function stopMonitor(id) {
@@ -656,7 +694,17 @@ export default function App() {
                 <label>Your Name</label>
                 <input value={name} onChange={e => setName(e.target.value)} placeholder="Enter your full name" />
               </div>
+              
+              <div className = "field">
+                <label>MRU Username</label>
+                <input value={mruUsername} onChange={e => setMruUsername(e.target.value)} placeholder="your.name@mtroyal.ca" />
+              </div>
 
+              <div className="field">
+                <label>MRU Password</label>
+                <input value={mruPassword} onChange={e => setMruPassword(e.target.value)} type="password" placeholder="••••••••" />
+              </div>
+              
               <div className="field">
                 <label>Course CRN</label>
                 <input value={crn} onChange={e => setCrn(e.target.value)} placeholder="e.g. 10234" />
@@ -665,6 +713,12 @@ export default function App() {
               <div className="field">
                 <label>Notification Email</label>
                 <input value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" type="email" disabled={emailConfigured} />
+                {emailConfigured && (
+                  <button className="btn-ghost" style={{marginTop: '8px', padding: '6px 12px', width: 'auto', fontSize: '11px'}} 
+                    onClick={() => { setEmailConfigured(false); setEmailPassword(""); }}>
+                    Reset email
+                  </button>
+                )}
               </div>
 
               {!emailConfigured && (
@@ -701,7 +755,7 @@ export default function App() {
           {!loading && message && (
             <>
               <div className="msg-box">{message}</div>
-              <button className="btn-primary" onClick={handleReset}>Track Another Course →</button>
+              <button className="btn-primary" onClick={handleReset}> Redirecting User →</button>
             </>
           )}
         </div>
