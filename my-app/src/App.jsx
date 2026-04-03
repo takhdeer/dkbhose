@@ -1,562 +1,713 @@
-import { useState, useEffect } from "react";
-import { collection, addDoc } from "firebase/firestore";
+
+import { useState } from "react";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { Eye, EyeOff, LogIn, UserPlus } from "lucide-react";
 import { db } from "./firebase";
 
+const styles = `
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; }
+  * { margin: 0; }
+
+  :root {
+    --bg: #050816;
+    --panel: rgba(10, 16, 30, 0.9);
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --cyan: #67e8f9;
+  }
+
+  html, body, #root { min-height: 100%; }
+
+  body {
+    background:
+      radial-gradient(circle at top left, rgba(103,232,249,0.14), transparent 28%),
+      radial-gradient(circle at bottom right, rgba(96,165,250,0.12), transparent 30%),
+      var(--bg);
+    color: var(--text);
+    font-family: 'Space Grotesk', sans-serif;
+  }
+
+  .app {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+
+  .card {
+    width: min(460px, 100%);
+    padding: 30px;
+    border-radius: 24px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 80px rgba(1, 8, 24, 0.38);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  .eyebrow {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 14px;
+    width: 100%;
+  }
+
+  h1 {
+    font-size: clamp(30px, 5vw, 40px);
+    line-height: 1.06;
+    letter-spacing: -0.03em;
+    margin-bottom: 10px;
+    text-align: center;
+  }
+
+  p {
+    color: var(--muted);
+    line-height: 1.7;
+    font-size: 14px;
+    margin-bottom: 22px;
+    text-align: center;
+  }
+
+  .field { margin-bottom: 14px; }
+
+  label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .label-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .label-header label {
+    margin-bottom: 0;
+  }
+
+  .forgot-link {
+    background: none;
+    border: none;
+    color: var(--cyan);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: underline;
+    transition: color 0.18s ease;
+  }
+
+  .forgot-link:hover {
+    color: #fff;
+  }
+
+  input {
+    width: 100%;
+    padding: 14px 15px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    outline: none;
+    transition: 0.18s ease;
+  }
+
+  input:focus {
+    border-color: rgba(103,232,249,0.38);
+    box-shadow: 0 0 0 3px rgba(103,232,249,0.08);
+  }
+
+  .password-wrap {
+    position: relative;
+  }
+
+  .password-wrap input {
+    padding-right: 48px;
+  }
+
+  .toggle-visibility {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .toggle-visibility:hover:not(:disabled) {
+    color: var(--text);
+    border-color: rgba(103,232,249,0.35);
+    transform: translateY(-50%);
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .actions-single {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  button {
+    border: 0;
+    border-radius: 14px;
+    padding: 14px 16px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+    transition: transform 0.16s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+  }
+
+  .btn-signin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: #fff;
+    background: linear-gradient(135deg, #0891b2 0%, #3b82f6 100%);
+    box-shadow: 0 12px 28px rgba(59,130,246,0.28);
+  }
+
+  .btn-signup {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--text);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  button:hover:not(:disabled) { transform: translateY(-1px); }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .message {
+    margin-top: 16px;
+    padding: 14px 15px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #cbd5e1;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-line;
+  }
+
+  .hint {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .auth-error {
+    margin-top: 12px;
+    color: #f87171;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .notify-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(251,191,36,0.2);
+    background: rgba(251,191,36,0.06);
+    color: #fbbf24;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .notify-hide {
+    padding: 7px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(56,189,248,0.26);
+    background: rgba(56,189,248,0.08);
+    color: var(--cyan);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .notify-config {
+    border-radius: 16px;
+    border: 1px solid rgba(56,189,248,0.14);
+    background: rgba(6, 20, 42, 0.52);
+    padding: 20px;
+  }
+
+  .notify-title {
+    color: #38bdf8;
+    font-size: 25px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  .notify-subtext {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+
+  .notify-subtext a {
+    color: #60a5fa;
+  }
+
+  .btn-config {
+    width: 100%;
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    background: linear-gradient(135deg, #0891b2 0%, #3b82f6 100%);
+    box-shadow: 0 12px 28px rgba(59,130,246,0.28);
+  }
+
+  .btn-full {
+    width: fit-content;
+    min-width: 220px;
+  }
+
+  .notify-status {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .notify-status.success {
+    color: #22c55e;
+    background: rgba(34,197,94,0.09);
+    border: 1px solid rgba(34,197,94,0.24);
+  }
+
+  .notify-status.error {
+    color: #f87171;
+    background: rgba(248,113,113,0.09);
+    border: 1px solid rgba(248,113,113,0.26);
+  }
+
+  @media (max-width: 480px) {
+    .card { padding: 22px; border-radius: 20px; }
+    .actions { grid-template-columns: 1fr; }
+  }
+`;
+
 export default function App() {
-  // Form State
-  const [name, setName] = useState("");
-  const [crn, setCrn] = useState("");
-  const [email, setEmail] = useState("");
+  const [page, setPage] = useState("signin");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [notificationEmail, setNotificationEmail] = useState("");
+  const [notificationPassword, setNotificationPassword] = useState("");
+  const [notifyConfigResult, setNotifyConfigResult] = useState(null);
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+  const [showNotifyBanner, setShowNotifyBanner] = useState(true);
+  const [authError, setAuthError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [message, setMessage] = useState("");
-  
-  // Cookies
-  const [JSESSIONIDCookie, setJSESSIONIDCookie] = useState("");
-  const [MRUB9SSBPRODREGHACookie, setMRUB9SSBPRODREGHACookie] = useState("");
-  
-  // Email configuration
-  const [emailPassword, setEmailPassword] = useState("");
-  const [emailConfigured, setEmailConfigured] = useState(false);
-  const [showEmailSetup, setShowEmailSetup] = useState(false);
-  
-  // Dashboard data
-  const [monitors, setMonitors] = useState([]);
-  const [courseInfo, setCourseInfo] = useState([]);
-  const [showDashboard, setShowDashboard] = useState(false);
+  const [message, setMessage] = useState("Enter your username and password to continue.");
 
-  // Check server health and email config on mount
-  useEffect(() => {
-    checkServerHealth();
-    loadDashboardData();
-    
-    // Refresh dashboard every 30 seconds
-    const interval = setInterval(loadDashboardData, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const canSubmit = username.trim().length > 0 && password.trim().length > 0;
 
-  async function checkServerHealth() {
-    try {
-      const response = await fetch("http://localhost:3001/api/health");
-      const data = await response.json();
-      setEmailConfigured(data.emailConfigured);
-    } catch (error) {
-      console.error("Server health check failed:", error);
-    }
+  function goToSignUpPage() {
+    setPage("signup");
+    setPassword("");
+    setConfirmPassword("");
+    setShowAuthPassword(false);
+    setAuthError("");
+    setMessage("Create your account using username, password, and confirm password.");
   }
 
-  async function loadDashboardData() {
-    try {
-      // Load monitors
-      const monitorsRes = await fetch("http://localhost:3001/api/monitors");
-      const monitorsData = await monitorsRes.json();
-      if (monitorsData.success) {
-        setMonitors(monitorsData.monitors);
-        setShowDashboard(monitorsData.monitors.length > 0);
-      }
-      
-      // Load course info
-      const courseRes = await fetch("http://localhost:3001/api/course-info");
-      const courseData = await courseRes.json();
-      setCourseInfo(courseData);
-    } catch (error) {
-      console.error("Failed to load dashboard data:", error);
-    }
+  function goToNotificationPage(statusMessage) {
+    setPage("notify");
+    setPassword("");
+    setConfirmPassword("");
+    setShowAuthPassword(false);
+    setShowNotifyBanner(true);
+    setNotifyConfigResult(null);
+    setAuthError("");
+    setMessage(statusMessage ?? "Set your email and email password to enable notifications.");
   }
 
-  async function configureEmail() {
-    if (!email || !emailPassword) {
-      setMessage("Please enter both email and app password");
+  function goToResetPage() {
+    setPage("reset");
+    setPassword("");
+    setConfirmPassword("");
+    setShowAuthPassword(false);
+    setAuthError("");
+    setMessage("Reset your password with username, new password, and confirm password.");
+  }
+
+  function goToSignInPage() {
+    setPage("signin");
+    setPassword("");
+    setConfirmPassword("");
+    setShowAuthPassword(false);
+    setAuthError("");
+    setMessage("Enter your username and password to continue.");
+  }
+
+  async function handleCreateAccount() {
+    setAuthError("");
+
+    if (!username.trim()) {
+      setMessage("Please enter a username.");
       return;
     }
 
+    if (!password.trim() || !confirmPassword.trim()) {
+      setMessage("Please enter password and confirm password.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setAuthError("Password and confirm password not matched");
+      return;
+    }
+
+    goToNotificationPage(`Account created for ${username.trim()}.\nNow add your notification email settings.`);
+
     setLoading(true);
     try {
-      const response = await fetch("http://localhost:3001/api/configure-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password: emailPassword }),
+      await addDoc(collection(db, "users"), {
+        username: username.trim(),
+        createdAt: serverTimestamp(),
       });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setEmailConfigured(true);
-        setShowEmailSetup(false);
-        setMessage("Email configured successfully!");
-        setTimeout(() => setMessage(""), 3000);
-      } else {
-        setMessage(` ${data.message}`);
-      }
-    } catch (error) {
-      setMessage(` Error: ${error.message}`);
+    } catch {
+      // Do not block navigation if Firestore write fails.
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleSubmit() {
-  setMessage("");
-  setProgress(0);
-  setLoading(true);
+  async function handleSaveNotificationSettings() {
+    const trimmedEmail = notificationEmail.trim();
+    const normalizedAppPassword = notificationPassword.replace(/\s+/g, "").trim();
 
-  let p = 0;
-  const interval = setInterval(() => {
-    p += 2;
-    if (p >= 100) p = 100;
-    setProgress(p);
-  }, 30);
+    if (!notificationEmail.trim() || !notificationPassword.trim()) {
+      setMessage("Please enter notification email and password.");
+      setNotifyConfigResult({ type: "error", text: "Email not configured" });
+      return;
+    }
 
-  try {
-    await addDoc(collection(db, "tracked_courses"), {
-      name,
-      crn,
-      email,
-      JSESSIONIDCookie,
-      MRUB9SSBPRODREGHACookie,
-      createdAt: new Date(),
-    });
+    setLoading(true);
+    setMessage("");
+    setNotifyConfigResult(null);
 
-    setTimeout(() => {
-      clearInterval(interval);
-      setLoading(false);
-      setMessage(`✅ Submitted!\nName: ${name}\nCRN: ${crn}\nEmail: ${email}\n\nNow tracking this course.`);
-    }, 1500);
-
-  } catch (err) {
-    clearInterval(interval);
-    setLoading(false);
-    setMessage(`❌ Error: ${err.message}`);
-  }
-}
-
-  async function stopMonitor(monitorId) {
     try {
-      const response = await fetch(`http://localhost:3001/api/stop-monitor/${monitorId}`, {
+      const configResponse = await fetch("http://localhost:3001/api/configure-email", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: normalizedAppPassword,
+        }),
       });
-      
-      const data = await response.json();
-      if (data.success) {
-        loadDashboardData();
+
+      const configData = await configResponse.json();
+      if (!configResponse.ok || !configData.success) {
+        setNotifyConfigResult({ type: "error", text: "Email not configured" });
+        setMessage(`Email not configured`);
+        return;
       }
+
+      await addDoc(collection(db, "notification_settings"), {
+        username: username.trim(),
+        email: trimmedEmail,
+        createdAt: serverTimestamp(),
+      });
+      setNotifyConfigResult({ type: "success", text: "Email configured successfully" });
+      setMessage("Notification settings saved. Email password was not stored.");
     } catch (error) {
-      console.error("Failed to stop monitor:", error);
+      setNotifyConfigResult({ type: "error", text: "Email not configured" });
+      setMessage(`Email not configured`);
+    } finally {
+      setLoading(false);
     }
   }
 
-  function handleReset() {
-    setName("");
-    setCrn("");
-    setEmail("");
-    setJSESSIONIDCookie("");
-    setMRUB9SSBPRODREGHACookie("");
+  async function handleResetPassword() {
+    setAuthError("");
+
+    if (!username.trim()) {
+      setMessage("Please enter a username.");
+      return;
+    }
+
+    if (!password.trim() || !confirmPassword.trim()) {
+      setMessage("Please enter new password and confirm password.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setAuthError("Password and confirm password not matched");
+      return;
+    }
+
+    setLoading(true);
     setMessage("");
-    setProgress(0);
+
+    try {
+      await addDoc(collection(db, "password_resets"), {
+        username: username.trim(),
+        requestedAt: serverTimestamp(),
+      });
+      setMessage(`Password reset request saved for ${username.trim()}.\nPassword was not stored.`);
+      setPage("signin");
+      setPassword("");
+      setConfirmPassword("");
+      setShowAuthPassword(false);
+    } catch (error) {
+      setMessage(`Could not save reset request: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // Styles (keeping your original styling)
-  const containerStyle = {
-    minHeight: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "flex-start",
-    backgroundColor: "#0f172a",
-    fontFamily: "Sans-Serif",
-    padding: "16px",
-    paddingTop: "40px",
-  };
-
-  const boxStyle = {
-    backgroundColor: "#1e293b",
-    padding: "30px",
-    borderRadius: "16px",
-    width: "620px",
-    maxWidth: "95vw",
-    textAlign: "center",
-    boxShadow: "0 25px 25px rgba(0,0,0,0.6)",
-    color: "#e5e7eb",
-    marginBottom: "20px",
-  };
-
-  const rowStyle = {
-    display: "flex",
-    alignItems: "center",
-    marginBottom: "18px",
-    gap: "20px",
-  };
-
-  const labelStyle = {
-    width: "180px",
-    textAlign: "right",
-    fontWeight: "700",
-    color: "#cbd5f5",
-    fontSize: "14px",
-  };
-
-  const inputStyle = {
-    flex: 1,
-    padding: "10px",
-    borderRadius: "12px",
-    border: "1px solid #334155",
-    backgroundColor: "#0f172a",
-    color: "#e5e7eb",
-    outline: "none",
-    fontSize: "14px",
-  };
-
-  const buttonStyle = {
-    padding: "12px 24px",
-    backgroundColor: "#2563eb",
-    color: "white",
-    border: "none",
-    borderRadius: "10px",
-    cursor: "pointer",
-    marginTop: "10px",
-    fontSize: "16px",
-    fontWeight: "600",
-    marginRight: "10px",
-  };
-
-  const disabledButtonStyle = {
-    ...buttonStyle,
-    backgroundColor: "#334155",
-    cursor: "not-allowed",
-  };
-
-  const smallButtonStyle = {
-    ...buttonStyle,
-    padding: "6px 12px",
-    fontSize: "12px",
-    marginTop: "0",
-    marginRight: "5px",
-  };
-
-  const canSubmit = name.trim() && crn.trim() && email.trim() && 
-                    JSESSIONIDCookie.trim() && MRUB9SSBPRODREGHACookie.trim() &&
-                    (emailConfigured || emailPassword.trim());
+  function handleSignIn() {
+    if (!canSubmit) return;
+    goToNotificationPage(`Signed in as ${username.trim()}.\nNow add your notification email settings.`);
+  }
 
   return (
-    <div style={containerStyle}>
-      <div style={{ maxWidth: "1200px", width: "100%" }}>
-        <div style={boxStyle}>
-          <div
-            style={{
-              fontSize: "28px",
-              fontWeight: "800",
-              marginBottom: "18px",
-              color: "#38bdf8",
-            }}
-          >
-            MRU Course Registration
-          </div>
-
-          {/* Email Configuration Banner */}
-          {!emailConfigured && (
-            <div style={{
-              backgroundColor: "#1e3a8a",
-              padding: "12px",
-              borderRadius: "8px",
-              marginBottom: "20px",
-              fontSize: "14px",
-            }}>
-              ⚠️ Email not configured.{" "}
-              <button 
-                onClick={() => setShowEmailSetup(!showEmailSetup)}
-                style={{
-                  ...smallButtonStyle,
-                  backgroundColor: "#3b82f6",
-                }}
-              >
-                {showEmailSetup ? "Hide" : "Setup Email"}
-              </button>
-            </div>
-          )}
-
-          {/* Email Setup */}
-          {showEmailSetup && (
-            <div style={{
-              backgroundColor: "#0f172a",
-              padding: "20px",
-              borderRadius: "10px",
-              marginBottom: "20px",
-              border: "1px solid #334155",
-              textAlign: "left",
-            }}>
-              <div style={{ fontSize: "16px", fontWeight: "700", marginBottom: "10px", color: "#38bdf8" }}>
-                Email Configuration
-              </div>
-              <div style={{ fontSize: "12px", color: "#94a3b8", marginBottom: "15px" }}>
-                Use Gmail with an <a href="https://support.google.com/accounts/answer/185833" target="_blank" style={{color: "#60a5fa"}}>App Password</a>
-              </div>
-              <div style={rowStyle}>
-                <div style={labelStyle}>Email:</div>
-                <input
-                  style={inputStyle}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your-email@gmail.com"
-                  type="email"
-                />
-              </div>
-              <div style={rowStyle}>
-                <div style={labelStyle}>App Password:</div>
-                <input
-                  style={inputStyle}
-                  value={emailPassword}
-                  onChange={(e) => setEmailPassword(e.target.value)}
-                  placeholder="16-character app password"
-                  type="password"
-                />
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <button 
-                  style={email && emailPassword ? buttonStyle : disabledButtonStyle}
-                  onClick={configureEmail}
-                  disabled={!email || !emailPassword || loading}
-                >
-                  Configure Email
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Form */}
-          {!loading && !message && (
+    <>
+      <style>{styles}</style>
+      <div className="app">
+        <div className="card">
+          <div className="eyebrow">MRU Course Tracker</div>
+          {page !== "notify" && (
             <>
-              <div style={rowStyle}>
-                <div style={labelStyle}>Name:</div>
-                <input
-                  style={inputStyle}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Enter your name"
-                />
-              </div>
+              <h1>
+                {page === "signin"
+                  ? "Sign in"
+                  : page === "signup"
+                    ? "Sign up"
+                    : "Forgot password"}
+              </h1>
+              <p>
+                {page === "signin"
+                  ? "Enter your username and password, or click Sign up to open the registration page."
+                  : page === "signup"
+                    ? "Create your account with username, password, and confirm password."
+                    : "Reset page: enter username, new password, and confirm password."}
+              </p>
+            </>
+          )}
 
-              <div style={rowStyle}>
-                <div style={labelStyle}>CRN:</div>
-                <input
-                  style={inputStyle}
-                  value={crn}
-                  onChange={(e) => setCrn(e.target.value)}
-                  placeholder="Enter course CRN"
-                />
-              </div>
+          {page !== "notify" && (
+            <div className="field">
+              <label htmlFor="username">Username</label>
+              <input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="Enter your username"
+                autoComplete="username"
+              />
+            </div>
+          )}
 
-              <div style={rowStyle}>
-                <div style={labelStyle}>Email:</div>
-                <input
-                  style={inputStyle}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  type="email"
-                  disabled={emailConfigured}
-                />
-              </div>
-
-              {!emailConfigured && (
-                <div style={rowStyle}>
-                  <div style={labelStyle}>Email Password:</div>
+          {page !== "notify" && (
+            <div className="field">
+              {page === "signin" ? (
+                <div className="label-header">
+                  <label htmlFor="password">Password</label>
+                  <button type="button" className="forgot-link" onClick={goToResetPage} disabled={loading}>
+                    Forgot password?
+                  </button>
+                </div>
+              ) : (
+                <label htmlFor="password">Password</label>
+              )}
+              {page !== "signin" ? (
+                <div className="password-wrap">
                   <input
-                    style={inputStyle}
-                    value={emailPassword}
-                    onChange={(e) => setEmailPassword(e.target.value)}
-                    placeholder="Gmail app password"
-                    type="password"
+                    id="password"
+                    type={showAuthPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder={page === "signup" ? "Enter your password" : "Enter your new password"}
+                    autoComplete="new-password"
                   />
+                  <button
+                    type="button"
+                    className="toggle-visibility"
+                    onClick={() => setShowAuthPassword((prev) => !prev)}
+                    aria-label={showAuthPassword ? "Hide password" : "Show password"}
+                  >
+                    {showAuthPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
+              ) : (
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Enter your password"
+                  autoComplete="current-password"
+                />
               )}
+            </div>
+          )}
 
-              <div style={rowStyle}>
-                <div style={labelStyle}>JSESSIONID:</div>
+          {page !== "signin" && page !== "notify" && (
+            <div className="field">
+              <label htmlFor="confirmPassword">Confirm Password</label>
+              <div className="password-wrap">
                 <input
-                  style={inputStyle}
-                  value={JSESSIONIDCookie}
-                  onChange={(e) => setJSESSIONIDCookie(e.target.value)}
-                  placeholder="Enter JSESSIONID cookie"
+                  id="confirmPassword"
+                  type={showAuthPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  placeholder="Confirm your password"
+                  autoComplete="new-password"
                 />
-              </div>
-
-              <div style={rowStyle}>
-                <div style={labelStyle}>MRUB9SSBPRODREGHA:</div>
-                <input
-                  style={inputStyle}
-                  value={MRUB9SSBPRODREGHACookie}
-                  onChange={(e) => setMRUB9SSBPRODREGHACookie(e.target.value)}
-                  placeholder="Enter MRUB9SSBPRODREGHA cookie"
-                />
-              </div>
-
-              <button 
-                style={canSubmit ? buttonStyle : disabledButtonStyle} 
-                onClick={handleSubmit}
-                disabled={!canSubmit}
-              >
-                Submit
-              </button>
-              
-              {showDashboard && (
-                <button 
-                  style={{...buttonStyle, backgroundColor: "#16a34a"}}
-                  onClick={() => setShowDashboard(!showDashboard)}
+                <button
+                  type="button"
+                  className="toggle-visibility"
+                  onClick={() => setShowAuthPassword((prev) => !prev)}
+                  aria-label={showAuthPassword ? "Hide password" : "Show password"}
                 >
-                  {showDashboard ? "Hide" : "Show"} Dashboard
+                  {showAuthPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
-              )}
-            </>
+              </div>
+            </div>
           )}
 
-          {/* LOADING Bar */}
-          {loading && (
+          {page === "notify" && (
             <>
-              <div style={{ fontSize: "20px", marginBottom: "10px" }}>
-                Loading...
-              </div>
-              <div>Please wait while we process your request.</div>
+              {showNotifyBanner && (
+                <div className="notify-banner">
+                  <span>⚠ Email notifications not configured</span>
+                  <button className="notify-hide" type="button" onClick={() => setShowNotifyBanner(false)}>
+                    Hide
+                  </button>
+                </div>
+              )}
 
-              <div style={{ marginTop: "20px", width: "100%" }}>
-                <div
-                  style={{
-                    height: "10px",
-                    backgroundColor: "#334155",
-                    borderRadius: "999px",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "10px",
-                      width: `${progress}%`,
-                      backgroundColor: "#38bdf8",
-                      borderRadius: "999px",
-                      transition: "width 0.03s linear",
-                    }}
+              <div className="notify-config">
+                <div className="notify-title">Email Configuration</div>
+                <div className="notify-subtext">
+                  Use Gmail with an <a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer">App Password</a>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="notificationEmail">Gmail Address</label>
+                  <input
+                    id="notificationEmail"
+                    type="email"
+                    value={notificationEmail}
+                    onChange={(event) => setNotificationEmail(event.target.value)}
+                    placeholder="your@gmail.com"
+                    autoComplete="email"
                   />
                 </div>
-                <div
-                  style={{
-                    marginTop: "8px",
-                    fontSize: "12px",
-                    color: "#cbd5f5",
-                  }}
-                >
-                  {progress}%
+
+                <div className="field">
+                  <label htmlFor="notificationPassword">App Password</label>
+                  <input
+                    id="notificationPassword"
+                    type="password"
+                    value={notificationPassword}
+                    onChange={(event) => setNotificationPassword(event.target.value)}
+                    placeholder="Enter your app password"
+                    autoComplete="new-password"
+                  />
                 </div>
+
+                <button className="btn-config" type="button" onClick={handleSaveNotificationSettings} disabled={loading}>
+                  Save Configuration
+                </button>
+
+                {notifyConfigResult && (
+                  <div className={`notify-status ${notifyConfigResult.type}`}>
+                    {notifyConfigResult.text}
+                  </div>
+                )}
               </div>
             </>
           )}
 
-          {/* Success/Error Message */}
-          {!loading && message && (
-            <>
-              <div
-                style={{
-                  marginBottom: "18px",
-                  whiteSpace: "pre-line",
-                  textAlign: "center",
-                  color: "#e5e7eb",
-                  padding: "20px",
-                  backgroundColor: "#0f172a",
-                  borderRadius: "10px",
-                }}
-              >
-                {message}
-              </div>
-
-              <button
-                style={{ ...buttonStyle, backgroundColor: "#16a34a" }}
-                onClick={handleReset}
-              >
-                New Entry
+          {page === "signin" ? (
+            <div className="actions">
+              <button className="btn-signin" type="button" onClick={handleSignIn} disabled={!canSubmit || loading}>
+                <LogIn size={16} />
+                Sign in
               </button>
-            </>
+              <button className="btn-signup" type="button" onClick={goToSignUpPage} disabled={loading}>
+                <UserPlus size={16} />
+                Sign up
+              </button>
+            </div>
+          ) : page === "signup" ? (
+            <div className="actions actions-single">
+              <button className="btn-signin btn-full" type="button" onClick={handleCreateAccount} disabled={loading}>
+                <UserPlus size={16} />
+                Create account
+              </button>
+            </div>
+          ) : page === "reset" ? (
+            <div className="actions">
+              <button className="btn-signin" type="button" onClick={handleResetPassword} disabled={loading}>
+                <UserPlus size={16} />
+                Reset password
+              </button>
+              <button className="btn-signup" type="button" onClick={goToSignInPage} disabled={loading}>
+                <LogIn size={16} />
+                Back to sign in
+              </button>
+            </div>
+          ) : null}
+
+          {page === "signin" && (
+            <div style={{ display: "none" }}>
+              <button className="btn-signup" type="button" onClick={goToResetPage} disabled={loading} style={{ width: "100%" }}>
+                Forgot password ?
+              </button>
+            </div>
           )}
+
+          {page !== "notify" && authError && <div className="auth-error">{authError}</div>}
+
         </div>
-
-        {/* Dashboard */}
-        {showDashboard && monitors.length > 0 && (
-          <div style={boxStyle}>
-            <div style={{ fontSize: "22px", fontWeight: "700", marginBottom: "15px", color: "#38bdf8" }}>
-              Active Monitors ({monitors.length})
-            </div>
-            {monitors.map((monitor) => (
-              <div
-                key={monitor.id}
-                style={{
-                  backgroundColor: "#0f172a",
-                  padding: "15px",
-                  borderRadius: "8px",
-                  marginBottom: "10px",
-                  textAlign: "left",
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontWeight: "700" }}>{monitor.name} - CRN: {monitor.crn}</div>
-                    <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>
-                      {monitor.email}
-                    </div>
-                    {monitor.notificationSent && (
-                      <div style={{ fontSize: "12px", color: "#22c55e", marginTop: "4px" }}>
-                         Notification sent
-                      </div>
-                    )}
-                  </div>
-                  {monitor.active && (
-                    <button
-                      onClick={() => stopMonitor(monitor.id)}
-                      style={{...smallButtonStyle, backgroundColor: "#ef4444"}}
-                    >
-                      Stop
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Course Info */}
-        {showDashboard && courseInfo.length > 0 && (
-          <div style={boxStyle}>
-            <div style={{ fontSize: "22px", fontWeight: "700", marginBottom: "15px", color: "#38bdf8" }}>
-              Course Information
-            </div>
-            {courseInfo.map((course, idx) => (
-              <div
-                key={idx}
-                style={{
-                  backgroundColor: "#0f172a",
-                  padding: "15px",
-                  borderRadius: "8px",
-                  marginBottom: "10px",
-                  textAlign: "left",
-                  border: course.seatsAvailable > 0 ? "2px solid #22c55e" : "1px solid #334155",
-                }}
-              >
-                <div style={{ fontWeight: "700", marginBottom: "8px" }}>
-                  {course.courseTitle}
-                </div>
-                <div style={{ fontSize: "13px", display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
-                  <div><span style={{color: "#94a3b8"}}>CRN:</span> {course.crn}</div>
-                  <div>
-                    <span style={{color: "#94a3b8"}}>Seats:</span>{" "}
-                    <span style={{ color: course.seatsAvailable > 0 ? "#22c55e" : "#ef4444", fontWeight: "700" }}>
-                      {course.seatsAvailable}
-                    </span>
-                  </div>
-                  <div><span style={{color: "#94a3b8"}}>Capacity:</span> {course.capacity}</div>
-                  <div><span style={{color: "#94a3b8"}}>Enrolled:</span> {course.enrollment}</div>
-                </div>
-                <div style={{ fontSize: "11px", color: "#64748b", marginTop: "8px" }}>
-                  Last checked: {course.lastChecked}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
-    </div>
+    </>
   );
 }
