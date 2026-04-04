@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs').promises;
 const {getMRUCookies, clearCookies} = require('./cookieExtractor');
+const authMiddleware = require('./middleware/authMiddleware');
 
 // Import your existing services
 const emailService = require('./emailService');
@@ -64,7 +65,7 @@ app.post('/api/configure-email', async (req, res) => {
 /**
  * Submit form and start monitoring - integrates with your existing codemm
  */
-app.post('/api/submit', async (req, res) => {
+app.post('/api/submit', authMiddleware, async (req, res) => {
   try {                                          // ← try opens here
     let { JSESSIONIDCookie, MRUB9SSBPRODREGHACookie } = req.body;
     const { name: StudentName, crn, email, emailPassword, mruUsername, mruPassword } = req.body;
