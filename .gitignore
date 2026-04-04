@@ -27,3 +27,6 @@ stop.js
 
 #class-info file
 classInfo.json
+
+#Firebase files
+serviceAccountKey.json

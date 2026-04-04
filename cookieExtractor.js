@@ -11,13 +11,15 @@ async function getMRUCookies(username, password) {
     }
     console.log("Launching browser to fetch MRU login");
     const browser = await puppeteer.launch({headless: true}); 
-    const loginPage = await browser.newloginPage();
+    const loginPage = await browser.newPage();
 
-    await loginPage.goto('https://auth.mtroyal.ca/authenticationendpoint/login.do?Name=PreLoginRequestProcessor&commonAuthCallerPath=%252Fcas%252Flogin&forceAuth=true&passiveAuth=false&service=https%3A%2F%2Fwww.mymru.ca%2F&tenantDomain=carbon.super&sessionDataKey=beaecbc6-ecd5-4e75-abb3-27f6dc149a02&relyingParty=Luminis5-prod-www-mymru-CAS&type=cas&sp=Luminis5-prod-www-mymru-CAS&isSaaSApp=false&authenticators=BasicAuthenticator%3ALOCAL', { waitUntill: 'networkidle2'}); 
+    await loginPage.goto('https://auth.mtroyal.ca/authenticationendpoint/login.do?Name=PreLoginRequestProcessor&commonAuthCallerPath=%252Fcas%252Flogin&forceAuth=true&passiveAuth=false&service=https%3A%2F%2Fwww.mymru.ca%2F&tenantDomain=carbon.super&sessionDataKey=beaecbc6-ecd5-4e75-abb3-27f6dc149a02&relyingParty=Luminis5-prod-www-mymru-CAS&type=cas&sp=Luminis5-prod-www-mymru-CAS&isSaaSApp=false&authenticators=BasicAuthenticator%3ALOCAL', { waitUntil: 'networkidle2'}); 
     await loginPage.type ("#username", username);
     await loginPage.type ("#password", password);
     await loginPage.click('[type="submit"]');
     await loginPage.waitForNavigation({ waitUntill: 'networkidle2'});
+    await loginPage.waitForNavigation({ waitUntill: 'networkidle2'}).catch(() => {});
+
 
     const cookies = await loginPage.cookies();
     await browser.close();
