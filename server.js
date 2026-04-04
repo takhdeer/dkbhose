@@ -2,7 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs').promises;
-const {getMRUcookies, clearcookies} = require('./cookieExtractor');
+const {getMRUCookies, clearCookies} = require('./cookieExtractor');
+const authMiddleware = require('./middleware/authMiddleware');
 
 const emailService = require('./emailService');
 const courseGetter = require('./courseGetter');
@@ -48,7 +49,7 @@ app.post('/api/configure-email', async (req, res) => {
 /**
  * Submit form and start monitoring - integrates with your existing codemm
  */
-app.post('/api/submit', async (req, res) => {
+app.post('/api/submit', authMiddleware, async (req, res) => {
   try {                                          // ← try opens here
     let { JSESSIONIDCookie, MRUB9SSBPRODREGHACookie } = req.body;
     const { name: StudentName, crn, email, emailPassword, mruUsername, mruPassword } = req.body;
@@ -60,7 +61,7 @@ app.post('/api/submit', async (req, res) => {
       MRUB9SSBPRODREGHACookie = cookies.mruCookie;
     }
 
-    if (!name || !crn || !email || !JSESSIONIDCookie || !MRUB9SSBPRODREGHACookie) {
+    if (!StudentName || !crn || !email || !JSESSIONIDCookie || !MRUB9SSBPRODREGHACookie) {
       return res.status(400).json({ success: false, message: 'All fields are required' });
     }
     //                                           ← no }); here, stay inside the function
