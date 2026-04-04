@@ -458,6 +458,7 @@ export default function App() {
       setMessage(`Email not configured`);
     } finally {
       setLoading(false);
+      setMessage(`❌ Error: ${err.message}`);
     }
   }
 
@@ -608,6 +609,10 @@ export default function App() {
                   {showAuthPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              <button className="btn-primary" onClick={configureEmail} disabled={!email || !emailPassword || loading}>
+                Save Configuration
+              </button>
+              <div className="divider" />
             </div>
           )}
 
@@ -662,7 +667,8 @@ export default function App() {
                   </div>
                 )}
               </div>
-            </>
+              <div className="prog-pct">{progress}%</div>
+            </div>
           )}
 
           {page === "signin" ? (

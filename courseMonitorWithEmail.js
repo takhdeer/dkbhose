@@ -1,7 +1,14 @@
-const fetch = require('node-fetch');
 const fs = require('fs').promises;
 const path = require('path');
 const emailService = require('./emailService');
+
+async function getFetch() {
+  if (typeof fetch !== 'undefined') {
+    return fetch;
+  }
+  const nodeFetch = await import('node-fetch');
+  return nodeFetch.default;
+}
 
 // Store active monitors
 const activeMonitors = new Map();
@@ -13,7 +20,8 @@ async function fetchCourseData(crn, jsessionid, mruCookie) {
   const url = 'https://ssb-prod.ec.mru.ca/PROD_Registration/bwckschd.p_get_crse_unsec';
   
   try {
-    const response = await fetch(url, {
+    const fetchImpl = await getFetch();
+    const response = await fetchImpl(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
