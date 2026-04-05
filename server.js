@@ -80,7 +80,7 @@ app.post('/api/submit', authMiddleware, async (req, res) => {
         JSESSIONID: JSESSIONIDCookie,
         MRUB9SSBPRODREGHA: MRUB9SSBPRODREGHACookie
       }
-    });
+    };
 
     // Fetch initial course data
     try {
@@ -216,12 +216,12 @@ app.get('/api/status', (req, res) => {
 app.post('/api/auto-login', async (req,res) => {
   try {
     const {username , password} = req.body;
-    if (!username || password) {
+    if (!username || !password) {
       return res.status(400).json({ success: false, message: 'Username and password required' });
     }
 
-    const cookies = await getMRUcookies(username, password);
-    res.json({ sucess: true, ...cookies});
+    const cookies = await getMRUCookies(username, password);
+    res.json({ success: true, ...cookies});
   } catch (error) {
     console.error("Auto-login failed", error);
     res.status(500).json({success: false, message: error.message});

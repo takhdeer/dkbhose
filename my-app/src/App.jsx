@@ -667,8 +667,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <div className="prog-pct">{progress}%</div>
-            </div>
+            </>
           )}
 
           {page === "signin" ? (
