@@ -1,222 +1,189 @@
-const fs = require('fs').promises;
-const path = require('path');
-
-async function getFetch() {
-  if (typeof fetch !== 'undefined') {
-    return fetch;
-  }
-  const nodeFetch = await import('node-fetch');
-  return nodeFetch.default;
-}
+const axios = require('axios');
+const { db } = require('./firebase');
 
 /**
- * Fetch course data from MRU registration system
+ * Fetch course data from MRU registration system using the JSON search endpoint.
  */
-async function fetchCourseData(crn, jsessionid, mruCookie) {
-  const url = 'https://ssb-prod.ec.mru.ca/PROD_Registration/bwckschd.p_get_crse_unsec';
-  
-  console.log(` Fetching data for CRN: ${crn}`);
-  
-  try {
-    const fetchImpl = await getFetch();
-    const response = await fetchImpl(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': `JSESSIONID=${jsessionid}; MRUB9SSBPRODREGHA=${mruCookie}`,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      body: new URLSearchParams({
-        term_in: '202601', // Winter 2026
-        sel_subj: 'dummy',
-        sel_day: 'dummy',
-        sel_schd: 'dummy',
-        sel_insm: 'dummy',
-        sel_camp: 'dummy',
-        sel_levl: 'dummy',
-        sel_sess: 'dummy',
-        sel_instr: 'dummy',
-        sel_ptrm: 'dummy',
-        sel_attr: 'dummy',
-        sel_crn: crn,
-        sel_title: '',
-        sel_from_cred: '',
-        sel_to_cred: '',
-        begin_hh: '0',
-        begin_mi: '0',
-        begin_ap: 'a',
-        end_hh: '0',
-        end_mi: '0',
-        end_ap: 'a'
-      })
-    });
+async function fetchCourseData(crn, jsessionid, mruCookie, term = '202701', options = {}) {
+  const baseUrl = 'https://ban9ssb-prod.mtroyal.ca/StudentRegistrationSsb/ssb/searchResults/searchResults';
+  const { saveToFirebase = true } = options;
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+  console.log(`📥 Fetching data for CRN: ${crn}`);
+
+  try {
+    if (!crn || !jsessionid || !mruCookie) {
+      throw new Error('crn, jsessionid, and mruCookie are required');
     }
 
-    const html = await response.text();
-    
-    // Parse course information from HTML
-    const courseData = parseHTML(html, crn);
-    
-    // Save to classInfo.json
-    await saveCourseInfo(courseData);
-    
-    console.log(` Successfully fetched data for CRN ${crn}`);
+    const response = await axios.get(baseUrl, {
+      params: {
+        txt_keywordlike: String(crn),
+        txt_term: String(term),
+        startDatepicker: '',
+        endDatepicker: '',
+        uniqueSessionId: Date.now().toString(),
+        pageOffset: 0,
+        pageMaxSize: 500,
+        sortColumn: 'subjectDescription',
+        sortDirection: 'asc'
+      },
+      headers: {
+        Cookie: `JSESSIONID=${jsessionid}; MRUB9SSBPRODREGHA=${mruCookie}`,
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 30000
+    });
+
+    const jsonData = response.data;
+    const courseData = parseJSON(jsonData, crn);
+
+    if (!courseData) {
+      throw new Error(`CRN ${crn} not found in search results`);
+    }
+
+    if (saveToFirebase) {
+      await saveCourseInfo(courseData);
+    }
+
+    console.log(`✅ Successfully fetched data for CRN ${crn}`);
     console.log(`   Seats: ${courseData.seatsAvailable}/${courseData.capacity}`);
-    
+
     return courseData;
-    
   } catch (error) {
-    console.error(`Error fetching course data for CRN ${crn}:`, error.message);
+    console.error(`❌ Error fetching course data for CRN ${crn}:`, error.message);
     throw error;
   }
 }
 
+function formatTime(timeValue) {
+  if (!timeValue || typeof timeValue !== 'string' || timeValue.length !== 4) {
+    return '';
+  }
+
+  const hours = Number(timeValue.slice(0, 2));
+  const minutes = timeValue.slice(2);
+  if (Number.isNaN(hours)) {
+    return '';
+  }
+
+  const suffix = hours >= 12 ? 'PM' : 'AM';
+  const normalizedHours = ((hours + 11) % 12) + 1;
+  return `${normalizedHours}:${minutes} ${suffix}`;
+}
+
+function buildMeetingDays(meetingTime = {}) {
+  const dayMap = [
+    ['monday', 'Mon'],
+    ['tuesday', 'Tue'],
+    ['wednesday', 'Wed'],
+    ['thursday', 'Thu'],
+    ['friday', 'Fri'],
+    ['saturday', 'Sat'],
+    ['sunday', 'Sun']
+  ];
+
+  return dayMap
+    .filter(([key]) => meetingTime[key])
+    .map(([, label]) => label)
+    .join(', ');
+}
+
 /**
- * Parse HTML response to extract course information
+ * Parse JSON response to extract course information.
  */
-function parseHTML(html, crn) {
+function parseJSON(jsonData, targetCrn) {
   try {
-    // Extract course title
-    const titleMatch = html.match(/<th[^>]*class="ddlabel"[^>]*>([^<]+)<\/th>/i);
-    const courseTitle = titleMatch ? titleMatch[1].trim() : 'Unknown Course';
-    
-    // Extract subject and course number
-    const subjectMatch = courseTitle.match(/^([A-Z]{4})\s+(\d{4})/);
-    const subject = subjectMatch ? subjectMatch[1] : '';
-    const courseNumber = subjectMatch ? subjectMatch[2] : '';
-    
-    // Extract seats information
-    const seatsMatch = html.match(/Seats Available:\s*<\/[^>]+>\s*(\d+)/i) || 
-                       html.match(/Seats:\s*<\/[^>]+>\s*(\d+)/i);
-    const seatsAvailable = seatsMatch ? parseInt(seatsMatch[1]) : 0;
-    
-    // Extract capacity
-    const capacityMatch = html.match(/Maximum Enrollment:\s*<\/[^>]+>\s*(\d+)/i) ||
-                          html.match(/Capacity:\s*<\/[^>]+>\s*(\d+)/i);
-    const capacity = capacityMatch ? parseInt(capacityMatch[1]) : 0;
-    
-    // Extract enrollment
-    const enrollmentMatch = html.match(/Current Enrollment:\s*<\/[^>]+>\s*(\d+)/i) ||
-                            html.match(/Enrollment:\s*<\/[^>]+>\s*(\d+)/i);
-    const enrollment = enrollmentMatch ? parseInt(enrollmentMatch[1]) : 0;
-    
-    // Extract waitlist info
-    const waitlistSeatsMatch = html.match(/Waitlist Seats:\s*<\/[^>]+>\s*(\d+)/i);
-    const waitlistSeats = waitlistSeatsMatch ? parseInt(waitlistSeatsMatch[1]) : 0;
-    
-    const waitlistCapacityMatch = html.match(/Waitlist Capacity:\s*<\/[^>]+>\s*(\d+)/i);
-    const waitlistCapacity = waitlistCapacityMatch ? parseInt(waitlistCapacityMatch[1]) : 0;
-    
-    // Extract instructor
-    const instructorMatch = html.match(/Instructor:\s*<\/[^>]+>\s*([^<]+)/i);
-    const instructor = instructorMatch ? instructorMatch[1].trim() : 'TBA';
-    
-    // Extract meeting times
-    const timeMatch = html.match(/(\d{1,2}:\d{2}\s*[ap]m)\s*-\s*(\d{1,2}:\d{2}\s*[ap]m)/i);
-    const startTime = timeMatch ? timeMatch[1] : '';
-    const endTime = timeMatch ? timeMatch[2] : '';
-    
-    // Extract days
-    const daysMatch = html.match(/>(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[\s,]*(Mon|Tue|Wed|Thu|Fri|Sat|Sun)?/gi);
-    const days = daysMatch ? daysMatch.map(d => d.replace('>', '').trim()).join(', ') : '';
-    
-    // Extract location
-    const locationMatch = html.match(/Building:\s*<\/[^>]+>\s*([^<]+)/i);
-    const building = locationMatch ? locationMatch[1].trim() : '';
-    
-    const roomMatch = html.match(/Room:\s*<\/[^>]+>\s*([^<]+)/i);
-    const room = roomMatch ? roomMatch[1].trim() : '';
-    
+    const courses = Array.isArray(jsonData.data) ? jsonData.data : [];
+    const target = String(targetCrn);
+
+    const course = courses.find((item) => {
+      const courseRef = item.courseReferenceNumber != null ? String(item.courseReferenceNumber) : '';
+      const courseDisplay = item.courseDisplay != null ? String(item.courseDisplay) : '';
+      return courseRef === target || courseDisplay === target;
+    });
+
+    if (!course) {
+      return null;
+    }
+
+    const meetings = Array.isArray(course.meetingsFaculty) ? course.meetingsFaculty : [];
+    const firstMeeting = meetings[0]?.meetingTime || {};
+    const faculty = Array.isArray(course.faculty) ? course.faculty : [];
+    const primaryFaculty = faculty.find((entry) => entry.primaryIndicator) || faculty[0] || {};
+
+    const seatsAvailable = Number(course.seatsAvailable ?? 0);
+    const capacity = Number(course.maximumEnrollment ?? 0);
+    const enrollment = Number(course.enrollment ?? Math.max(capacity - seatsAvailable, 0));
+
     return {
-      crn,
-      courseTitle,
-      subject,
-      courseNumber,
+      crn: String(course.courseReferenceNumber ?? targetCrn),
+      courseTitle: course.courseTitle || `${course.subject || ''} ${course.courseNumber || ''}`.trim(),
+      subject: course.subject || '',
+      subjectDescription: course.subjectDescription || '',
+      courseNumber: String(course.courseNumber || ''),
+      courseDisplay: String(course.courseDisplay || ''),
       seatsAvailable,
       capacity,
       enrollment,
-      waitlistSeats,
-      waitlistCapacity,
-      instructor,
+      waitCapacity: Number(course.waitCapacity ?? 0),
+      waitCount: Number(course.waitCount ?? 0),
+      waitAvailable: Number(course.waitAvailable ?? 0),
+      instructor: primaryFaculty.displayName || 'TBA',
       schedule: {
-        days,
-        startTime,
-        endTime,
-        building,
-        room
+        days: buildMeetingDays(firstMeeting),
+        startTime: formatTime(firstMeeting.beginTime),
+        endTime: formatTime(firstMeeting.endTime),
+        building: firstMeeting.buildingDescription || firstMeeting.building || '',
+        room: firstMeeting.room || ''
       },
+      term: course.term || jsonData.term || '',
+      campusDescription: course.campusDescription || '',
+      scheduleTypeDescription: course.scheduleTypeDescription || '',
+      instructionalMethodDescription: course.instructionalMethodDescription || '',
       status: seatsAvailable > 0 ? 'OPEN' : 'FULL',
       timestamp: new Date().toISOString(),
-      lastChecked: new Date().toLocaleString()
+      lastChecked: new Date().toLocaleString(),
+      rawData: course
     };
   } catch (error) {
-    console.error(' Error parsing HTML:', error.message);
-    return {
-      crn,
-      courseTitle: 'Error parsing course data',
-      seatsAvailable: 0,
-      capacity: 0,
-      enrollment: 0,
-      status: 'ERROR',
-      timestamp: new Date().toISOString(),
-      error: error.message
-    };
+    console.error('❌ Error parsing JSON:', error.message);
+    return null;
   }
 }
 
 /**
- * Save course information to classInfo.json
+ * Save course information to Firebase
  */
 async function saveCourseInfo(courseData) {
   try {
-    const filePath = path.join(__dirname, 'classInfo.json');
-    let courses = [];
-    
-    // Read existing data
-    try {
-      const existingData = await fs.readFile(filePath, 'utf-8');
-      courses = JSON.parse(existingData);
-    } catch (error) {
-      // File doesn't exist, will create new
-    }
-    
-    // Update or add course
-    const existingIndex = courses.findIndex(c => c.crn === courseData.crn);
-    if (existingIndex >= 0) {
-      courses[existingIndex] = courseData;
-    } else {
-      courses.push(courseData);
-    }
-    
-    // Write to file
-    await fs.writeFile(filePath, JSON.stringify(courses, null, 2));
-    console.log(`💾 Saved course data to classInfo.json`);
-    
+    const docRef = db.collection('course_data').doc(courseData.crn);
+    await docRef.set({
+      courseData: courseData
+    });
+    console.log(`💾 Saved course ${courseData.crn} to Firebase`);
   } catch (error) {
-    console.error('Error saving course info:', error.message);
+    console.error('❌ Error saving course info:', error.message);
   }
 }
 
 /**
  * Fetch multiple courses
  */
-async function fetchMultipleCourses(crns, jsessionid, mruCookie) {
+async function fetchMultipleCourses(crns, jsessionid, mruCookie, term = '202701') {
   console.log(`📥 Fetching data for ${crns.length} courses...`);
   
   const results = [];
   
   for (const crn of crns) {
     try {
-      const courseData = await fetchCourseData(crn, jsessionid, mruCookie);
+      const courseData = await fetchCourseData(crn, jsessionid, mruCookie, term);
       results.push(courseData);
       
       // Add delay between requests to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
-      console.error(` Failed to fetch CRN ${crn}`);
+      console.error(`❌ Failed to fetch CRN ${crn}`);
       results.push({
         crn,
         error: error.message,
@@ -225,7 +192,7 @@ async function fetchMultipleCourses(crns, jsessionid, mruCookie) {
     }
   }
   
-  console.log(`Completed fetching ${results.length} courses`);
+  console.log(`✅ Completed fetching ${results.length} courses`);
   return results;
 }
 
@@ -234,3 +201,4 @@ module.exports = {
   fetchMultipleCourses,
   saveCourseInfo
 };
+
