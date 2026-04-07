@@ -749,28 +749,21 @@ function TrackPage() {
     if (!canSubmit) return;
     setLoading(true);
     setTrackResult(null);
-
+  
     try {
-      const response = await fetch("http://localhost:3001/api/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          crn: crn.trim(),
-        }),
+      await addDoc(collection(db, "tracked_courses"), {
+        username,
+        name: name.trim(),
+        crn: crn.trim(),
+        email,
+        createdAt: serverTimestamp(),
       });
-
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        setTrackResult({ type: "error", text: data.message || "Failed to start tracking." });
-        return;
-      }
-
-      setTrackResult({ type: "success", text: `Monitoring started! Session ID: ${data.sessionId}` });
+  
+      setTrackResult({ type: "success", text: "Course saved! You will be notified when a seat opens." });
       setName("");
       setCrn("");
-    } catch {
-      setTrackResult({ type: "error", text: "Could not connect to server." });
+    } catch (err) {
+      setTrackResult({ type: "error", text: "Could not save course." });
     } finally {
       setLoading(false);
     }

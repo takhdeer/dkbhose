@@ -89,26 +89,21 @@ app.post('/api/submit', authMiddleware, async (req, res) => {
       console.error('Error fetching initial course data:', error);
     }
 
-    // Start monitoring
-    courseMonitor.startMonitoring({
-      crn, email, StudentName,
-      cookies: {
-        JSESSIONID: JSESSIONIDCookie,
-        MRUB9SSBPRODREGHA: MRUB9SSBPRODREGHACookie
-      },
-      sessionId,
-      onNotificationSent: () => {
-        const session = activeSessions.get(sessionId);
-        if (session) session.notificationSent = true;
-      }
-    });
+  // Start monitoring
+  pollingEngine.startMonitoring({
+    crn, email, StudentName,
+    cookies: {
+      JSESSIONID: JSESSIONIDCookie,
+      MRUB9SSBPRODREGHA: MRUB9SSBPRODREGHACookie
+    }
+  });
 
     // Send confirmation email
-    if (isEmailConfigured) {
+    if (emailService.isConfigured()) {
       await emailService.sendConfirmation(email, StudentName  , crn, sessionId);
     }
 
-    res.json({ success: true, message: 'Course monitoring started successfully', sessionId });
+    res.json({ success: true, message: 'Course monitoring started successfully'});
 
   } catch (error) {                              
     console.error('Error in submit:', error);
@@ -247,10 +242,7 @@ app.listen(PORT, () => {
 function shutdown() {
   console.log('Shutdown signal received: closing HTTP server');
   pollingEngine.stop();
-  server.close(() => {
-    console.log('HTTP server closed');
-    process.exit(0);
-  });
+  process.exit(0);
 }
 
 process.on('SIGTERM', shutdown);
