@@ -380,7 +380,7 @@ app.post('/api/auto-login', async (req,res) => {
 }); 
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📧 Email configured: ${emailService.isConfigured()}`);
   console.log(`🔍 Ready to monitor courses!`);
@@ -394,6 +394,16 @@ app.listen(PORT, () => {
   console.log('  GET    /api/health           - Health check');
   console.log('  GET    /api/available-courses - Get available courses');
   console.log('  GET    /api/status           - Polling + server status');
+
+  pollingEngine.start()
+    .then((started) => {
+      if (!started) {
+        console.log('⚠️  Polling engine was already running');
+      }
+    })
+    .catch((error) => {
+      console.error('❌ Failed to start polling engine:', error.message);
+    });
 });
 
 function shutdown() {
