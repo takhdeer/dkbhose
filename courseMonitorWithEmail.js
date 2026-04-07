@@ -8,7 +8,7 @@ async function getFetch() {
   }
   const nodeFetch = await import('node-fetch');
   return nodeFetch.default;
-}  
+}
 
 // Store active monitors
 const activeMonitors = new Map();

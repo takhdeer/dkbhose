@@ -197,6 +197,7 @@ const styles = `
     background: linear-gradient(135deg, #0891b2 0%, #3b82f6 100%);
     box-shadow: 0 12px 28px rgba(59,130,246,0.28);
   }
+`;
 
   .btn-signup {
     display: inline-flex;
@@ -458,7 +459,6 @@ export default function App() {
       setMessage(`Email not configured`);
     } finally {
       setLoading(false);
-      setMessage(`❌ Error: ${err.message}`);
     }
   }
 
@@ -714,6 +714,25 @@ export default function App() {
 
         </div>
       </div>
+    </Card>
+  );
+}
+
+// ─── Root with router ─────────────────────────────────────────────────────────
+export default function App() {
+  return (
+    <>
+      <style>{styles}</style>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<SignInPage />} />
+          <Route path="/signin" element={<SignInPage />} />
+          <Route path="/signup" element={<SignUpPage />} />
+          <Route path="/reset" element={<ResetPage />} />
+          <Route path="/notify" element={<NotifyPage />} />
+          <Route path="/track" element={<TrackPage />} />
+        </Routes>
+      </BrowserRouter>
     </>
   );
 }

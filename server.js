@@ -9,12 +9,10 @@ const emailService = require('./emailService');
 const courseGetter = require('./courseGetter');
 const db = require('./db');
 const pollingEngine = require('./pollingEngine');
-const testCourseFlowRoute = require('./routes/testCourseFlow');
 const app = express();
 const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
-app.use('/api/test-course-flow', testCourseFlowRoute);
 app.post('/api/configure-email', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -28,155 +26,6 @@ app.post('/api/configure-email', async (req, res) => {
 
     const configured = await emailService.configure(email, password);
 
-
-      /**
-       * Debug endpoint - Fetch raw JSON from MRU API to inspect structure
-       * POST /api/debug-course-json
-       * Request body: { username, password }
-       */
-      app.post('/api/debug-course-json', async (req, res) => {
-        try {
-          const { username, password, term = '202701' } = req.body;
-
-          if (!username || !password) {
-            return res.status(400).json({
-              success: false,
-              message: 'Username and password are required'
-            });
-          }
-
-          console.log('🧪 [DEBUG] Fetching raw JSON response...');
-    
-          // Get cookies
-          const cookies = await getMRUCookies(username, password);
-          console.log('✅ [DEBUG] Cookies obtained');
-
-          // Manually call the URL to see raw response
-          const fetch = await import('node-fetch').then(m => m.default);
-          const url = new URL('https://ban9ssb-prod.mtroyal.ca/StudentRegistrationSsb/ssb/searchResults/searchResults');
-          url.searchParams.append('txt_term', term);
-          url.searchParams.append('startDatepicker', '');
-          url.searchParams.append('endDatepicker', '');
-          url.searchParams.append('pageOffset', '0');
-          url.searchParams.append('pageMaxSize', '5');
-          url.searchParams.append('sortColumn', 'subjectDescription');
-          url.searchParams.append('sortDirection', 'asc');
-
-          console.log('📥 [DEBUG] Calling URL:', url.toString());
-          const response = await fetch(url.toString(), {
-            method: 'GET',
-            headers: {
-              'Cookie': `JSESSIONID=${cookies.JSESSIONID}; MRUB9SSBPRODREGHA=${cookies.MRUB9SSBPRODREGHA}`,
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              'Accept': 'application/json'
-            }
-          });
-
-          if (!response.ok) {
-            return res.status(response.status).json({
-              success: false,
-              status: response.status,
-              statusText: response.statusText
-            });
-          }
-
-          const jsonData = await response.json();
-          console.log('✅ [DEBUG] Raw JSON fetched successfully');
-
-          res.json({
-            success: true,
-            message: 'Raw JSON response from MRU API',
-            structure: {
-              dataType: typeof jsonData.data,
-              dataLength: Array.isArray(jsonData.data) ? jsonData.data.length : 'not-array',
-              firstItemKeys: jsonData.data && jsonData.data.length > 0 ? Object.keys(jsonData.data[0]) : []
-            },
-            data: jsonData
-          });
-        } catch (error) {
-          console.error('❌ [DEBUG] Error:', error.message);
-          res.status(500).json({
-            success: false,
-            message: 'Debug failed',
-            error: error.message
-          });
-        }
-      });
-
-
-      /**
-       * Debug endpoint - Fetch raw JSON from MRU API to inspect structure
-       * POST /api/debug-course-json
-       * Request body: { username, password }
-       */
-      app.post('/api/debug-course-json', async (req, res) => {
-        try {
-          const { username, password, term = '202701' } = req.body;
-
-          if (!username || !password) {
-            return res.status(400).json({
-              success: false,
-              message: 'Username and password are required'
-            });
-          }
-
-          console.log('🧪 [DEBUG] Fetching raw JSON response...');
-    
-          // Get cookies
-          const cookies = await getMRUCookies(username, password);
-          console.log('✅ [DEBUG] Cookies obtained');
-
-          // Manually call the URL to see raw response
-          const fetch = await import('node-fetch').then(m => m.default);
-          const url = new URL('https://ban9ssb-prod.mtroyal.ca/StudentRegistrationSsb/ssb/searchResults/searchResults');
-          url.searchParams.append('txt_term', term);
-          url.searchParams.append('startDatepicker', '');
-          url.searchParams.append('endDatepicker', '');
-          url.searchParams.append('pageOffset', '0');
-          url.searchParams.append('pageMaxSize', '10');
-          url.searchParams.append('sortColumn', 'subjectDescription');
-          url.searchParams.append('sortDirection', 'asc');
-
-          console.log('📥 [DEBUG] Calling URL:', url.toString());
-          const response = await fetch(url.toString(), {
-            method: 'GET',
-            headers: {
-              'Cookie': `JSESSIONID=${cookies.JSESSIONID}; MRUB9SSBPRODREGHA=${cookies.MRUB9SSBPRODREGHA}`,
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              'Accept': 'application/json'
-            }
-          });
-
-          if (!response.ok) {
-            return res.status(response.status).json({
-              success: false,
-              status: response.status,
-              statusText: response.statusText
-            });
-          }
-
-          const jsonData = await response.json();
-          console.log('✅ [DEBUG] Raw JSON fetched successfully');
-
-          res.json({
-            success: true,
-            message: 'Raw JSON response from MRU API',
-            structure: {
-              dataType: typeof jsonData.data,
-              dataLength: Array.isArray(jsonData.data) ? jsonData.data.length : 'not-array',
-              firstItemKeys: jsonData.data && jsonData.data.length > 0 ? Object.keys(jsonData.data[0]) : []
-            },
-            data: jsonData
-          });
-        } catch (error) {
-          console.error('❌ [DEBUG] Error:', error.message);
-          res.status(500).json({
-            success: false,
-            message: 'Debug failed',
-            error: error.message
-          });
-        }
-      });
     if (configured) {
       res.json({
         success: true,
@@ -240,26 +89,21 @@ app.post('/api/submit', authMiddleware, async (req, res) => {
       console.error('Error fetching initial course data:', error);
     }
 
-    // Start monitoring
-    courseMonitor.startMonitoring({
-      crn, email, StudentName,
-      cookies: {
-        JSESSIONID: JSESSIONIDCookie,
-        MRUB9SSBPRODREGHA: MRUB9SSBPRODREGHACookie
-      },
-      sessionId,
-      onNotificationSent: () => {
-        const session = activeSessions.get(sessionId);
-        if (session) session.notificationSent = true;
-      }
-    });
+  // Start monitoring
+  pollingEngine.startMonitoring({
+    crn, email, StudentName,
+    cookies: {
+      JSESSIONID: JSESSIONIDCookie,
+      MRUB9SSBPRODREGHA: MRUB9SSBPRODREGHACookie
+    }
+  });
 
-      // Start server
-    if (isEmailConfigured) {
+    // Send confirmation email
+    if (emailService.isConfigured()) {
       await emailService.sendConfirmation(email, StudentName  , crn, sessionId);
     }
 
-    res.json({ success: true, message: 'Course monitoring started successfully', sessionId });
+    res.json({ success: true, message: 'Course monitoring started successfully'});
 
   } catch (error) {                              
     console.error('Error in submit:', error);
@@ -367,12 +211,12 @@ app.get('/api/status', (req, res) => {
 app.post('/api/auto-login', async (req,res) => {
   try {
     const {username , password} = req.body;
-    if (!username || password) {
+    if (!username || !password) {
       return res.status(400).json({ success: false, message: 'Username and password required' });
     }
 
-    const cookies = await getMRUcookies(username, password);
-    res.json({ sucess: true, ...cookies});
+    const cookies = await getMRUCookies(username, password);
+    res.json({ success: true, ...cookies});
   } catch (error) {
     console.error("Auto-login failed", error);
     res.status(500).json({success: false, message: error.message});
@@ -394,25 +238,12 @@ const server = app.listen(PORT, () => {
   console.log('  GET    /api/health           - Health check');
   console.log('  GET    /api/available-courses - Get available courses');
   console.log('  GET    /api/status           - Polling + server status');
-
-  pollingEngine.start()
-    .then((started) => {
-      if (!started) {
-        console.log('⚠️  Polling engine was already running');
-      }
-    })
-    .catch((error) => {
-      console.error('❌ Failed to start polling engine:', error.message);
-    });
 });
 
 function shutdown() {
   console.log('Shutdown signal received: closing HTTP server');
   pollingEngine.stop();
-  server.close(() => {
-    console.log('HTTP server closed');
-    process.exit(0);
-  });
+  process.exit(0);
 }
 
 process.on('SIGTERM', shutdown);
