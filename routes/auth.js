@@ -1,4 +1,4 @@
-const { admin, db } = require('../firebase');
+const { admin, db } = require('./firebase');
 
 async function createUser(email, password) {
   const userRecord = await admin.auth().createUser({ email, password });

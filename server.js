@@ -224,14 +224,13 @@ app.post('/api/auto-login', async (req,res) => {
 }); 
 
 // Start server
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📧 Email configured: ${emailService.isConfigured()}`);
   console.log(`🔍 Ready to monitor courses!`);
   console.log('\nAvailable endpoints:');
   console.log('  POST   /api/configure-email  - Configure email settings');
   console.log('  POST   /api/submit           - Start monitoring a course');
-  console.log('  POST   /api/test-course-flow - Test: cookies → fetch → Firebase');
   console.log('  GET    /api/course-info      - Get course information');
   console.log('  GET    /api/monitors         - Get active monitors');
   console.log('  POST   /api/stop-monitor/:id - Stop a monitor');

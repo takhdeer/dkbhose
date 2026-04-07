@@ -30,6 +30,3 @@ classInfo.json
 
 #Firebase files
 serviceAccountKey.json
-
-# scrape file
-scrape-mru-courses.js
