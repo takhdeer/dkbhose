@@ -15,7 +15,7 @@ function hasAvailableSeats(course) {
  */
 function findAvailableCourses(jsonData, term, subject = null) {
   if (!jsonData || !jsonData.data) {
-    return [];
+    return []; 
   }
 
   let courses = jsonData.data;
@@ -66,6 +66,7 @@ function findCourseByIdentifier(jsonData, searchTerm) {
 
   return formatted;
 }
+
 
 /**
  * Format course object into simplified structure
