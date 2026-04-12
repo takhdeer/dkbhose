@@ -2,6 +2,7 @@ import { useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
 import { Eye, EyeOff, LogIn, UserPlus, BookOpen, Search } from "lucide-react";
+import Dashboard from "./Dgashboard";
 import { db } from "./firebase";
 
 const styles = `
@@ -372,7 +373,7 @@ function SignInPage() {
         setAuthError("No account found with that username.");
         return;
       }
-      navigate("/notify", { state: { username: username.trim() } });
+      navigate("/dashboard", { state: { username: username.trim() } });
     } catch {
       setAuthError("Something went wrong. Please try again.");
     } finally {
@@ -762,6 +763,9 @@ function TrackPage() {
       setTrackResult({ type: "success", text: "Course saved! You will be notified when a seat opens." });
       setName("");
       setCrn("");
+      setTimeout(() => {
+        navigate("/dashboard", {state: { username } });
+      }, 1500);
     } catch (err) {
       setTrackResult({ type: "error", text: "Could not save course." });
     } finally {
@@ -844,6 +848,7 @@ export default function App() {
           <Route path="/reset" element={<ResetPage />} />
           <Route path="/notify" element={<NotifyPage />} />
           <Route path="/track" element={<TrackPage />} />
+          <Route path ="/dashboard" element={<Dashboard />} />
         </Routes>
       </BrowserRouter>
     </>
