@@ -1,9 +1,19 @@
 import { useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
-import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
-import { Eye, EyeOff, LogIn, UserPlus, BookOpen, Search } from "lucide-react";
-import Dashboard from "./Dgashboard";
-import { db } from "./firebase";
+import { addDoc, collection, getDocs, query, serverTimestamp, where, updateDoc, doc } from "firebase/firestore";
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail
+} from "firebase/auth";
+import { Eye, EyeOff, LogIn, UserPlus, Search } from "lucide-react";
+import Dashboard from "./Dashboard";
+import { db, auth } from "./firebase";
+
+const termOptions = [
+  { value: "Fall 2026", label: "Fall 2026" },
+  { value: "Winter 2027", label: "Winter 2027" }
+];
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap');
@@ -130,6 +140,28 @@ const styles = `
   input:focus {
     border-color: rgba(103,232,249,0.38);
     box-shadow: 0 0 0 3px rgba(103,232,249,0.08);
+  }
+
+  select {
+    width: 100%;
+    padding: 14px 15px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    outline: none;
+    transition: 0.18s ease;
+  }
+
+  select:focus {
+    border-color: rgba(103,232,249,0.38);
+    box-shadow: 0 0 0 3px rgba(103,232,249,0.08);
+  }
+
+  option {
+    color: #050816;
+    background:rgba(103,232,249,0.38);
+    align-items: center;
   }
 
   .password-wrap { position: relative; }
@@ -340,7 +372,6 @@ const styles = `
   }
 `;
 
-// ─── Shared card shell ────────────────────────────────────────────────────────
 function Card({ children }) {
   return (
     <div className="app">
@@ -352,30 +383,63 @@ function Card({ children }) {
   );
 }
 
-// ─── /signin ──────────────────────────────────────────────────────────────────
+function getFirebaseErrorMessage(error) {
+  switch (error.code) {
+    case "auth/email-already-in-use":
+      return "That email is already in use.";
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/weak-password":
+      return "Password should be at least 6 characters.";
+    case "auth/invalid-credential":
+      return "Incorrect email or password.";
+    case "auth/user-not-found":
+      return "No account found with that email.";
+    case "auth/too-many-requests":
+      return "Too many attempts. Try again later.";
+    default:
+      return "Something went wrong. Please try again.";
+  }
+}
+
+async function getUsernameByEmail(email) {
+  const q = query(collection(db, "users"), where("email", "==", email.trim().toLowerCase()));
+  const snapshot = await getDocs(q);
+
+  if (snapshot.empty) {
+    return "";
+  }
+
+  return snapshot.docs[0].data().username || "";
+}
+
 function SignInPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const canSubmit = username.trim().length > 0 && password.trim().length > 0;
+  const canSubmit = email.trim().length > 0 && password.trim().length > 0;
 
   async function handleSignIn() {
     if (!canSubmit) return;
+
     setLoading(true);
     setAuthError("");
+
     try {
-      const q = query(collection(db, "users"), where("username", "==", username.trim()));
-      const snapshot = await getDocs(q);
-      if (snapshot.empty) {
-        setAuthError("No account found with that username.");
-        return;
-      }
-      navigate("/dashboard", { state: { username: username.trim() } });
-    } catch {
-      setAuthError("Something went wrong. Please try again.");
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+
+      const username = await getUsernameByEmail(email);
+      navigate("/dashboard", {
+        state: {
+          username: username || email.trim()
+        }
+      });
+    } catch (error) {
+      setAuthError(getFirebaseErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -384,42 +448,68 @@ function SignInPage() {
   return (
     <Card>
       <h1>Sign in</h1>
-      <p>Enter your username and password, or click Sign up to register.</p>
+      <p>Enter your email and password, or click Sign up to register.</p>
 
       <div className="field">
-        <label htmlFor="username">Username</label>
+        <label htmlFor="email">Email</label>
         <input
-          id="username"
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Enter your username"
-          autoComplete="username"
+          id="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Enter your email"
+          autoComplete="email"
         />
       </div>
 
       <div className="field">
         <div className="label-header">
           <label htmlFor="password">Password</label>
-          <button type="button" className="forgot-link" onClick={() => navigate("/reset")} disabled={loading}>
+          <button
+            type="button"
+            className="forgot-link"
+            onClick={() => navigate("/reset")}
+            disabled={loading}
+          >
             Forgot password?
           </button>
         </div>
-        <input
-          id="password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Enter your password"
-          autoComplete="current-password"
-        />
+
+        <div className="password-wrap">
+          <input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            autoComplete="current-password"
+          />
+          <button
+            type="button"
+            className="toggle-visibility"
+            onClick={() => setShowPassword((p) => !p)}
+          >
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
       </div>
 
       <div className="actions">
-        <button className="btn-signin" type="button" onClick={handleSignIn} disabled={!canSubmit || loading}>
-          <LogIn size={16} /> Sign in
+        <button
+          className="btn-signin"
+          type="button"
+          onClick={handleSignIn}
+          disabled={!canSubmit || loading}
+        >
+          <LogIn size={16} /> {loading ? "Signing in..." : "Sign in"}
         </button>
-        <button className="btn-signup" type="button" onClick={() => navigate("/signup")} disabled={loading}>
+
+        <button
+          className="btn-signup"
+          type="button"
+          onClick={() => navigate("/signup")}
+          disabled={loading}
+        >
           <UserPlus size={16} /> Sign up
         </button>
       </div>
@@ -429,10 +519,11 @@ function SignInPage() {
   );
 }
 
-// ─── /signup ──────────────────────────────────────────────────────────────────
 function SignUpPage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -441,19 +532,55 @@ function SignUpPage() {
 
   async function handleCreateAccount() {
     setAuthError("");
-    if (!username.trim()) { setAuthError("Please enter a username."); return; }
-    if (!password.trim() || !confirmPassword.trim()) { setAuthError("Please enter password and confirm password."); return; }
-    if (password !== confirmPassword) { setAuthError("Password and confirm password do not match."); return; }
+
+    if (!username.trim()) {
+      setAuthError("Please enter a username.");
+      return;
+    }
+
+    if (!name.trim()) {
+      setAuthError("Please enter your name.");
+      return;
+    }
+
+    if (!email.trim()) {
+      setAuthError("Please enter an email.");
+      return;
+    }
+
+    if (!password.trim() || !confirmPassword.trim()) {
+      setAuthError("Please enter password and confirm password.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setAuthError("Password and confirm password do not match.");
+      return;
+    }
 
     setLoading(true);
+
     try {
+      await createUserWithEmailAndPassword(auth, email.trim(), password);
+
       await addDoc(collection(db, "users"), {
         username: username.trim(),
-        createdAt: serverTimestamp(),
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        app_password: "",
+        password: password,
+        createdAt: serverTimestamp()
       });
-      navigate("/notify", { state: { username: username.trim(), newAccount: true } });
-    } catch {
-      setAuthError("Could not create account. Please try again.");
+
+      navigate("/notify", {
+        state: {
+          username: username.trim(),
+          email: email.trim().toLowerCase(),
+          newAccount: true
+        }
+      });
+    } catch (error) {
+      setAuthError(getFirebaseErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -462,7 +589,7 @@ function SignUpPage() {
   return (
     <Card>
       <h1>Sign up</h1>
-      <p>Create your account with a username, password, and confirmation.</p>
+      <p>Create your account with a username, email, and password.</p>
 
       <div className="field">
         <label htmlFor="username">Username</label>
@@ -473,6 +600,30 @@ function SignUpPage() {
           onChange={(e) => setUsername(e.target.value)}
           placeholder="Enter your username"
           autoComplete="username"
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor="name">Name</label>
+        <input
+          id="name"
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Enter your name"
+          autoComplete="name"
+        />
+      </div>
+
+      <div className="field">
+        <label htmlFor="signupEmail">Email</label>
+        <input
+          id="signupEmail"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Enter your email"
+          autoComplete="email"
         />
       </div>
 
@@ -487,7 +638,11 @@ function SignUpPage() {
             placeholder="Enter your password"
             autoComplete="new-password"
           />
-          <button type="button" className="toggle-visibility" onClick={() => setShowPassword((p) => !p)}>
+          <button
+            type="button"
+            className="toggle-visibility"
+            onClick={() => setShowPassword((p) => !p)}
+          >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
@@ -504,15 +659,24 @@ function SignUpPage() {
             placeholder="Confirm your password"
             autoComplete="new-password"
           />
-          <button type="button" className="toggle-visibility" onClick={() => setShowPassword((p) => !p)}>
+          <button
+            type="button"
+            className="toggle-visibility"
+            onClick={() => setShowPassword((p) => !p)}
+          >
             {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         </div>
       </div>
 
       <div className="actions actions-single">
-        <button className="btn-signin btn-full" type="button" onClick={handleCreateAccount} disabled={loading}>
-          <UserPlus size={16} /> Create account
+        <button
+          className="btn-signin btn-full"
+          type="button"
+          onClick={handleCreateAccount}
+          disabled={loading}
+        >
+          <UserPlus size={16} /> {loading ? "Creating..." : "Create account"}
         </button>
       </div>
 
@@ -521,31 +685,29 @@ function SignUpPage() {
   );
 }
 
-// ─── /reset ───────────────────────────────────────────────────────────────────
 function ResetPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
   const [authError, setAuthError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleResetPassword() {
     setAuthError("");
-    if (!username.trim()) { setAuthError("Please enter a username."); return; }
-    if (!password.trim() || !confirmPassword.trim()) { setAuthError("Please enter new password and confirm password."); return; }
-    if (password !== confirmPassword) { setAuthError("Password and confirm password do not match."); return; }
+    setSuccessMessage("");
+
+    if (!email.trim()) {
+      setAuthError("Please enter your email.");
+      return;
+    }
 
     setLoading(true);
+
     try {
-      await addDoc(collection(db, "password_resets"), {
-        username: username.trim(),
-        requestedAt: serverTimestamp(),
-      });
-      navigate("/signin");
+      await sendPasswordResetEmail(auth, email.trim());
+      setSuccessMessage("Password reset email sent.");
     } catch (error) {
-      setAuthError(`Could not save reset request: ${error.message}`);
+      setAuthError(getFirebaseErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -554,73 +716,51 @@ function ResetPage() {
   return (
     <Card>
       <h1>Forgot password</h1>
-      <p>Enter your username, new password, and confirm to reset.</p>
+      <p>Enter your account email to receive a password reset link.</p>
 
       <div className="field">
-        <label htmlFor="username">Username</label>
+        <label htmlFor="resetEmail">Email</label>
         <input
-          id="username"
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Enter your username"
-          autoComplete="username"
+          id="resetEmail"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Enter your email"
+          autoComplete="email"
         />
       </div>
 
-      <div className="field">
-        <label htmlFor="password">New Password</label>
-        <div className="password-wrap">
-          <input
-            id="password"
-            type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your new password"
-            autoComplete="new-password"
-          />
-          <button type="button" className="toggle-visibility" onClick={() => setShowPassword((p) => !p)}>
-            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        </div>
-      </div>
-
-      <div className="field">
-        <label htmlFor="confirmPassword">Confirm Password</label>
-        <div className="password-wrap">
-          <input
-            id="confirmPassword"
-            type={showPassword ? "text" : "password"}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm your password"
-            autoComplete="new-password"
-          />
-          <button type="button" className="toggle-visibility" onClick={() => setShowPassword((p) => !p)}>
-            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        </div>
-      </div>
-
       <div className="actions">
-        <button className="btn-signin" type="button" onClick={handleResetPassword} disabled={loading}>
-          <UserPlus size={16} /> Reset password
+        <button
+          className="btn-signin"
+          type="button"
+          onClick={handleResetPassword}
+          disabled={loading}
+        >
+          <UserPlus size={16} /> {loading ? "Sending..." : "Reset password"}
         </button>
-        <button className="btn-signup" type="button" onClick={() => navigate("/signin")} disabled={loading}>
+
+        <button
+          className="btn-signup"
+          type="button"
+          onClick={() => navigate("/signin")}
+          disabled={loading}
+        >
           <LogIn size={16} /> Back to sign in
         </button>
       </div>
 
       {authError && <div className="auth-error">{authError}</div>}
+      {successMessage && <div className="notify-status success">{successMessage}</div>}
     </Card>
   );
 }
 
-// ─── /notify ──────────────────────────────────────────────────────────────────
 function NotifyPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const username = location.state?.username ?? "";
+  const email = location.state?.email ?? "";
 
   const [notificationEmail, setNotificationEmail] = useState("");
   const [notificationPassword, setNotificationPassword] = useState("");
@@ -644,28 +784,30 @@ function NotifyPage() {
       const configResponse = await fetch("http://localhost:3001/api/configure-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail, password: normalizedPassword }),
+        body: JSON.stringify({ email: trimmedEmail, password: normalizedPassword })
       });
 
       const configData = await configResponse.json();
+
       if (!configResponse.ok || !configData.success) {
         setNotifyConfigResult({ type: "error", text: "Email not configured" });
         return;
       }
 
-      await addDoc(collection(db, "notification_settings"), {
-        username,
-        email: trimmedEmail,
-        createdAt: serverTimestamp(),
-      });
+      const userQuery = query(collection(db, "users"), where("username", "==", username));
+      const userSnapshot = await getDocs(userQuery);
+      if (!userSnapshot.empty) {
+        const userDoc = userSnapshot.docs[0];
+        await updateDoc(doc(db, "users", userDoc.id), {
+          app_password: normalizedPassword
+        });
+      }
 
       setNotifyConfigResult({ type: "success", text: "Email configured successfully" });
 
-      // Navigate to track page after short delay
       setTimeout(() => {
         navigate("/track", { state: { username, email: trimmedEmail } });
       }, 1000);
-
     } catch {
       setNotifyConfigResult({ type: "error", text: "Email not configured" });
     } finally {
@@ -678,7 +820,9 @@ function NotifyPage() {
       {showBanner && (
         <div className="notify-banner">
           <span>⚠ Email notifications not configured</span>
-          <button className="notify-hide" type="button" onClick={() => setShowBanner(false)}>Hide</button>
+          <button className="notify-hide" type="button" onClick={() => setShowBanner(false)}>
+            Hide
+          </button>
         </div>
       )}
 
@@ -712,8 +856,13 @@ function NotifyPage() {
           />
         </div>
 
-        <button className="btn-config" type="button" onClick={handleSaveNotificationSettings} disabled={loading}>
-          Save Configuration
+        <button
+          className="btn-config"
+          type="button"
+          onClick={handleSaveNotificationSettings}
+          disabled={loading}
+        >
+          {loading ? "Saving..." : "Save Configuration"}
         </button>
 
         {notifyConfigResult && (
@@ -721,18 +870,22 @@ function NotifyPage() {
             {notifyConfigResult.text}
           </div>
         )}
-
+        {/*
         <div style={{ marginTop: "16px" }}>
-          <button className="btn-signup" style={{ width: "100%" }} type="button" onClick={() => navigate("/track", { state: { username } })}>
+          <button
+            className="btn-signup"
+            style={{ width: "100%" }}
+            type="button"
+            onClick={() => navigate("/track", { state: { username } })}
+          >
             Skip for now →
           </button>
         </div>
+      */}
       </div>
     </Card>
   );
 }
-
-// ─── /track ───────────────────────────────────────────────────────────────────
 function TrackPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -741,33 +894,84 @@ function TrackPage() {
 
   const [name, setName] = useState("");
   const [crn, setCrn] = useState("");
+  const [term, setTerm] = useState("Fall 2026");
   const [trackResult, setTrackResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const canSubmit = name.trim().length > 0 && crn.trim().length > 0;
+  const canSubmit = name.trim().length > 0 && crn.trim().length > 0 && term.trim().length > 0;
 
   async function handleStartTracking() {
-    if (!canSubmit) return;
+    const trimmedName = name.trim();
+    const trimmedCrn = crn.trim();
+    const trimmedTerm = term.trim();
+    let termCode = "";
+
+    if (trimmedTerm === "Winter 2027") {
+      termCode = "202701";
+    } else if (trimmedTerm === "Fall 2026") {
+      termCode = "202604";
+    }
+
+    if (!trimmedName || !trimmedCrn || !termCode) return;
+
     setLoading(true);
     setTrackResult(null);
-  
+
     try {
+      const userQuery = query(collection(db, "users"), where("username", "==", username));
+      const userSnapshot = await getDocs(userQuery);
+      let appPassword = "";
+      let accountEmail = email || "";
+      if (!userSnapshot.empty) {
+        const userData = userSnapshot.docs[0].data();
+        appPassword = userData.app_password || "";
+        accountEmail = userData.email || email || "";
+      }
+
+      const existingQuery = query(
+        collection(db, "tracked_courses"),
+        where("username", "==", username),
+        where("term", "==", termCode),
+        where("crn", "==", trimmedCrn)
+      );
+
+      const existingSnapshot = await getDocs(existingQuery);
+
+      if (!existingSnapshot.empty) {
+        setTrackResult({
+          type: "error",
+          text: "You are already tracking this course."
+        });
+        return;
+      }
+
       await addDoc(collection(db, "tracked_courses"), {
         username,
-        name: name.trim(),
-        crn: crn.trim(),
-        email,
-        createdAt: serverTimestamp(),
+        name: trimmedName,
+        crn: trimmedCrn,
+        term: termCode,
+        email: accountEmail,
+        app_password: appPassword,
+        createdAt: serverTimestamp()
       });
-  
-      setTrackResult({ type: "success", text: "Course saved! You will be notified when a seat opens." });
+
+      setTrackResult({
+        type: "success",
+        text: "Course saved! You will be notified when a seat opens."
+      });
+
       setName("");
       setCrn("");
+      setTerm("Fall 2026");
+
       setTimeout(() => {
-        navigate("/dashboard", {state: { username } });
+        navigate("/dashboard", { state: { username, term: termCode } });
       }, 1500);
-    } catch (err) {
-      setTrackResult({ type: "error", text: "Could not save course." });
+    } catch {
+      setTrackResult({
+        type: "error",
+        text: "Could not save course."
+      });
     } finally {
       setLoading(false);
     }
@@ -804,6 +1008,17 @@ function TrackPage() {
           />
         </div>
 
+        <div className="field">
+          <label htmlFor="term">Term</label>
+          <select id="term" value={term} onChange={(e) => setTerm(e.target.value)}>
+            {termOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <button
           className="btn-config"
           type="button"
@@ -834,8 +1049,6 @@ function TrackPage() {
     </Card>
   );
 }
-
-// ─── Root with router ─────────────────────────────────────────────────────────
 export default function App() {
   return (
     <>
@@ -848,7 +1061,7 @@ export default function App() {
           <Route path="/reset" element={<ResetPage />} />
           <Route path="/notify" element={<NotifyPage />} />
           <Route path="/track" element={<TrackPage />} />
-          <Route path ="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard" element={<Dashboard />} />
         </Routes>
       </BrowserRouter>
     </>
