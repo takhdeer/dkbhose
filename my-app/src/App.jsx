@@ -2,7 +2,7 @@ import { useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
 import { Eye, EyeOff, LogIn, UserPlus, BookOpen, Search } from "lucide-react";
-import Dashboard from "./Dgashboard";
+import Dashboard from "./Dashboard";
 import { db } from "./firebase";
 
 const styles = `
