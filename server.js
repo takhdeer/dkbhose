@@ -89,14 +89,7 @@ app.post('/api/submit', authMiddleware, async (req, res) => {
       console.error('Error fetching initial course data:', error);
     }
 
-  // Start monitoring
-  pollingEngine.startMonitoring({
-    crn, email, StudentName,
-    cookies: {
-      JSESSIONID: JSESSIONIDCookie,
-      MRUB9SSBPRODREGHA: MRUB9SSBPRODREGHACookie
-    }
-  });
+    // Seat checks run via the global polling engine (tracked_courses in Firestore).
 
     // Send confirmation email
     if (emailService.isConfigured()) {
@@ -228,6 +221,11 @@ const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`📧 Email configured: ${emailService.isConfigured()}`);
   console.log(`🔍 Ready to monitor courses!`);
+
+  pollingEngine.start().catch((err) => {
+    console.error('Polling engine failed to start:', err.message);
+  });
+
   console.log('\nAvailable endpoints:');
   console.log('  POST   /api/configure-email  - Configure email settings');
   console.log('  POST   /api/submit           - Start monitoring a course');

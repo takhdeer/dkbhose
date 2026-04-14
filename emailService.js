@@ -166,6 +166,76 @@ async function sendAvailabilityNotification(toEmail, courseInfo) {
 }
 
 /**
+ * Send availability email using the subscriber's Gmail + app password (from tracked_courses).
+ * Does not use the globally configured transporter.
+ */
+async function sendAvailabilityNotificationWithCredentials(gmailUser, appPassword, toEmail, courseInfo) {
+    const user = String(gmailUser || '').trim();
+    // Gmail app passwords are often stored with spaces; SMTP expects the 16 chars without spaces.
+    const pass = String(appPassword || '').replace(/\s+/g, '');
+    const to = String(toEmail || user).trim();
+    if (!user || !pass) {
+        console.log('Missing email or app password for notification');
+        return false;
+    }
+
+    const { crn, courseTitle, seatsAvailable, capacity, enrollment } = courseInfo;
+
+    const t = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user, pass },
+    });
+
+    try {
+        await t.verify();
+    } catch (e) {
+        console.error('Gmail verify failed for notification:', e.message);
+        return false;
+    }
+
+    try {
+        const mailOptions = {
+            from: user,
+            to,
+            subject: `SEAT AVAILABLE! ${courseTitle || `CRN ${crn}`}`,
+            text: `Great news!\n\nA seat is now available in your monitored course!\n\nCourse: ${courseTitle || 'Unknown Course'}\nCRN: ${crn}\nSeats Available: ${seatsAvailable}\nCapacity: ${capacity}\nCurrent Enrollment: ${enrollment}\n\nGo register now before it's taken!\n\nMRU Registration: https://ssb-prod.ec.mru.ca/PROD_Registration`,
+            html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background-color: #22c55e; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
+                <h1 style="margin: 0; font-size: 24px;">SEAT AVAILABLE!</h1>
+              </div>
+              <div style="padding: 20px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px;">
+                <p style="font-size: 18px; color: #1f2937;">Great news! A seat is now available!</p>
+                <div style="background-color: #f0fdf4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #22c55e;">
+                  <h3 style="margin-top: 0; color: #166534;">${courseTitle || 'Course Details'}</h3>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr><td style="padding: 8px 0;"><strong>CRN:</strong></td><td style="padding: 8px 0;">${crn}</td></tr>
+                    <tr><td style="padding: 8px 0;"><strong>Seats Available:</strong></td><td style="padding: 8px 0; color: #22c55e; font-weight: bold;">${seatsAvailable}</td></tr>
+                    <tr><td style="padding: 8px 0;"><strong>Capacity:</strong></td><td style="padding: 8px 0;">${capacity}</td></tr>
+                    <tr><td style="padding: 8px 0;"><strong>Current Enrollment:</strong></td><td style="padding: 8px 0;">${enrollment}</td></tr>
+                  </table>
+                </div>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="https://ssb-prod.ec.mru.ca/PROD_Registration"
+                     style="display: inline-block; background-color: #2563eb; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
+                    Register Now
+                  </a>
+                </div>
+                <p style="color: #6b7280; font-size: 12px;">Sent at ${new Date().toLocaleString()}</p>
+              </div>
+            </div>`,
+        };
+
+        await t.sendMail(mailOptions);
+        console.log(`Availability notification sent to ${to} for CRN ${crn} (subscriber SMTP)`);
+        return true;
+    } catch (error) {
+        console.error('Error sending subscriber notification:', error.message);
+        return false;
+    }
+}
+
+/**
  * Send test email to verify configuration
  */
 async function sendTestEmail(toEmail) {
@@ -230,6 +300,7 @@ async function sendTestEmail(toEmail) {
     configure,
     sendConfirmation,
     sendAvailabilityNotification,
+    sendAvailabilityNotificationWithCredentials,
     sendTestEmail,
     isConfigured,
     getConfig,

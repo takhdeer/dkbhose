@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { FieldValue } = require('firebase-admin/firestore');
 const { db } = require('./firebase');
 
 const BASE_URL = 'https://ban9ssb-prod.mtroyal.ca/StudentRegistrationSsb/ssb/searchResults/searchResults';
@@ -8,81 +9,73 @@ const BASE_URL = 'https://ban9ssb-prod.mtroyal.ca/StudentRegistrationSsb/ssb/sea
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Read every tracked course from the `users` collection, fetch live seat data
- * for each unique CRN/term pair, and write results back to Firestore.
+ * Read every row in `tracked_courses`, dedupe by CRN+term for API calls, fetch
+ * seat data, write `course_data/{crn}`, and merge status onto each
+ * `tracked_courses` document.
  *
- * Firebase schema assumed:
- *   users/{userId} {
- *     email: string,
- *     name:  string,
- *     crn:   number,   // single CRN this user is tracking
- *     term:  number    // term code e.g. 202701
- *   }
- *
- * Written to:
- *   course_data/{crn}  { ...courseData, lastChecked, term }
- *   users/{userId}/notifications/{crn}  { seatsAvailable, status, lastChecked }
+ * tracked_courses fields used: crn, term (one document per course subscription).
  */
 async function fetchAndStoreAllTrackedCourses(cookies) {
     const { JSESSIONID, MRUB9SSBPRODREGHA } = cookies;
 
-    // 1. Load all users with tracked courses
-    const usersSnap = await db.collection('users').get();
-    if (usersSnap.empty) {
-        console.log('ℹ️  No users found in Firestore — nothing to poll');
+    const trackedSnap = await db.collection('tracked_courses').get();
+    if (trackedSnap.empty) {
+        console.log('No documents in tracked_courses — nothing to poll');
         return [];
     }
 
-    // 2. Build a deduplicated map of crn+term → [userIds] so we only hit the
-    //    API once per unique CRN+term even if multiple users track the same pair.
-    const crnMap = new Map(); // key: `${crn}:${term}` → { crn, term, userIds[] }
+    const crnMap = new Map();
 
-    for (const doc of usersSnap.docs) {
-        const trackedPairs = extractTrackedCoursePairs(doc.data());
-        for (const { crn, term } of trackedPairs) {
-            const key = `${crn}:${term}`;
-            if (!crnMap.has(key)) crnMap.set(key, { crn: String(crn), term: String(term), userIds: [] });
-            crnMap.get(key).userIds.push(doc.id);
+    for (const doc of trackedSnap.docs) {
+        const d = doc.data();
+        const crn = d.crn != null ? String(d.crn).trim() : '';
+        const term = d.term != null ? String(d.term).trim() : '';
+        if (!crn || !term) continue;
+        const key = `${crn}:${term}`;
+        if (!crnMap.has(key)) {
+            crnMap.set(key, { crn, term, trackedDocIds: [] });
         }
+        crnMap.get(key).trackedDocIds.push(doc.id);
     }
 
     if (crnMap.size === 0) {
-        console.log('ℹ️  No tracked courses found across all users');
+        console.log('No valid crn+term rows in tracked_courses');
         return [];
     }
 
-    console.log(`📋 Polling ${crnMap.size} unique CRN(s) for ${usersSnap.size} user(s)...`);
+    console.log(`Polling ${crnMap.size} unique CRN/term pair(s) from ${trackedSnap.size} tracked row(s)...`);
 
-    // 3. Fetch each CRN and persist results
     const results = [];
-    for (const { crn, term, userIds } of crnMap.values()) {
+    for (const { crn, term, trackedDocIds } of crnMap.values()) {
         try {
             const courseData = await fetchCourseData(crn, JSESSIONID, MRUB9SSBPRODREGHA, term);
 
-            // Write canonical course snapshot
             await saveCourseData(courseData);
+            await mergeTrackedCourseStatus(trackedDocIds, crn, courseData, null);
 
-            // Write per-user notification record so the server can check per-user
-            await updateUserCourseStatus(userIds, crn, courseData);
-
-            results.push({ crn, term, status: 'ok', seatsAvailable: courseData.seatsAvailable });
-            console.log(`  ✅ CRN ${crn} | seats: ${courseData.seatsAvailable}/${courseData.capacity} | ${courseData.status}`);
+            results.push({
+                crn,
+                term,
+                status: 'ok',
+                seatsAvailable: courseData.seatsAvailable,
+                courseStatus: courseData.status,
+            });
+            console.log(`  OK CRN ${crn} | seats: ${courseData.seatsAvailable}/${courseData.capacity} | ${courseData.status}`);
         } catch (err) {
-            console.error(`  ❌ CRN ${crn}: ${err.message}`);
+            console.error(`  ERR CRN ${crn}: ${err.message}`);
             results.push({ crn, term, status: 'error', error: err.message });
 
-            // Still update lastChecked + error so polling engine can report it
             await db.collection('course_data').doc(crn).set(
                 { lastChecked: new Date().toISOString(), lastError: err.message },
                 { merge: true }
             ).catch(() => {});
+            await mergeTrackedCourseStatus(trackedDocIds, crn, null, err.message);
         }
 
-        // Small delay to avoid hammering the API
         await sleep(300);
     }
 
-    console.log(`✅ Poll complete: ${results.filter(r => r.status === 'ok').length} ok, ${results.filter(r => r.status === 'error').length} errors`);
+    console.log(`Poll complete: ${results.filter(r => r.status === 'ok').length} ok, ${results.filter(r => r.status === 'error').length} errors`);
     return results;
 }
 
@@ -163,21 +156,32 @@ async function saveCourseData(courseData) {
     });
 }
 
-async function updateUserCourseStatus(userIds, crn, courseData) {
+async function mergeTrackedCourseStatus(trackedDocIds, crn, courseData, lastError) {
+    if (!trackedDocIds.length) return;
+
     const batch = db.batch();
-    const statusKey = `${courseData.term || 'unknown'}_${crn}`;
-    const payload = {
-        crn,
-        term:           courseData.term || '',
-        seatsAvailable: courseData.seatsAvailable,
-        status:         courseData.status,
-        courseTitle:    courseData.courseTitle,
-        lastChecked:    new Date().toISOString(),
-    };
-    for (const userId of userIds) {
-        const ref = db.collection('users').doc(userId)
-                      .collection('course_status').doc(statusKey);
-        batch.set(ref, payload, { merge: true });
+    const now = new Date().toISOString();
+
+    for (const docId of trackedDocIds) {
+        const ref = db.collection('tracked_courses').doc(docId);
+        if (lastError) {
+            batch.set(ref, {
+                crn: String(crn),
+                lastChecked: now,
+                lastError,
+                status: 'ERROR',
+            }, { merge: true });
+        } else {
+            batch.set(ref, {
+                crn: String(crn),
+                term: courseData.term || '',
+                seatsAvailable: courseData.seatsAvailable,
+                status: courseData.status,
+                courseTitle: courseData.courseTitle,
+                lastChecked: now,
+                lastError: FieldValue.delete(),
+            }, { merge: true });
+        }
     }
     await batch.commit();
 }
@@ -263,47 +267,6 @@ function buildMeetingDays(mt = {}) {
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function extractTrackedCoursePairs(userData = {}) {
-    const out = [];
-
-    // Current schema: users/{uid}.trackedCourses = [{ crn, term, ... }, ...]
-    const trackedCourses = Array.isArray(userData.trackedCourses) ? userData.trackedCourses : [];
-    for (const item of trackedCourses) {
-        const crnValues = splitCrnValues(item?.crn);
-        const term = item?.term;
-        if (!term) continue;
-        for (const crn of crnValues) {
-            out.push({ crn: String(crn), term: String(term) });
-        }
-    }
-
-    // Backward compatibility for older user docs with top-level crn/term
-    if (userData.crn && userData.term) {
-        for (const crn of splitCrnValues(userData.crn)) {
-            out.push({ crn: String(crn), term: String(userData.term) });
-        }
-    }
-
-    // Deduplicate pairs
-    const seen = new Set();
-    return out.filter(({ crn, term }) => {
-        const key = `${crn}:${term}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-}
-
-function splitCrnValues(value) {
-    if (value == null) return [];
-
-    const rawItems = Array.isArray(value) ? value : [value];
-    return rawItems
-        .flatMap(item => String(item).split(/[,\s]+/))
-        .map(v => v.trim())
-        .filter(v => /^\d+$/.test(v));
 }
 
 module.exports = { fetchAndStoreAllTrackedCourses, fetchCourseData, saveCourseData };
