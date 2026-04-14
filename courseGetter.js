@@ -1,13 +1,11 @@
-const fs = require('fs').promises;
-const path = require('path');
+const axios = require('axios');
+const { db } = require('./firebase');
 
-async function getFetch() {
-  if (typeof fetch !== 'undefined') {
-    return fetch;
-  }
-  const nodeFetch = await import('node-fetch');
-  return nodeFetch.default;
-}
+const BASE_URL = 'https://ban9ssb-prod.mtroyal.ca/StudentRegistrationSsb/ssb/searchResults/searchResults';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Read every tracked course from the `users` collection, fetch live seat data
@@ -25,44 +23,60 @@ async function getFetch() {
  *   course_data/{crn}  { ...courseData, lastChecked, term }
  *   users/{userId}/notifications/{crn}  { seatsAvailable, status, lastChecked }
  */
-async function fetchCourseData(crn, jsessionid, mruCookie) {
-  const url = 'https://ssb-prod.ec.mru.ca/PROD_Registration/bwckschd.p_get_crse_unsec';
-  
-  console.log(` Fetching data for CRN: ${crn}`);
-  
-  try {
-    const fetchImpl = await getFetch();
-    const response = await fetchImpl(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': `JSESSIONID=${jsessionid}; MRUB9SSBPRODREGHA=${mruCookie}`,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      body: new URLSearchParams({
-        term_in: '202601', // Winter 2026
-        sel_subj: 'dummy',
-        sel_day: 'dummy',
-        sel_schd: 'dummy',
-        sel_insm: 'dummy',
-        sel_camp: 'dummy',
-        sel_levl: 'dummy',
-        sel_sess: 'dummy',
-        sel_instr: 'dummy',
-        sel_ptrm: 'dummy',
-        sel_attr: 'dummy',
-        sel_crn: crn,
-        sel_title: '',
-        sel_from_cred: '',
-        sel_to_cred: '',
-        begin_hh: '0',
-        begin_mi: '0',
-        begin_ap: 'a',
-        end_hh: '0',
-        end_mi: '0',
-        end_ap: 'a'
-      })
-    });
+async function fetchAndStoreAllTrackedCourses(cookies) {
+    const { JSESSIONID, MRUB9SSBPRODREGHA } = cookies;
+
+    // 1. Load all users with tracked courses
+    const usersSnap = await db.collection('users').get();
+    if (usersSnap.empty) {
+        console.log('ℹ️  No users found in Firestore — nothing to poll');
+        return [];
+    }
+
+    // 2. Build a deduplicated map of crn+term → [userIds] so we only hit the
+    //    API once per unique CRN+term even if multiple users track the same pair.
+    const crnMap = new Map(); // key: `${crn}:${term}` → { crn, term, userIds[] }
+
+    for (const doc of usersSnap.docs) {
+        const trackedPairs = extractTrackedCoursePairs(doc.data());
+        for (const { crn, term } of trackedPairs) {
+            const key = `${crn}:${term}`;
+            if (!crnMap.has(key)) crnMap.set(key, { crn: String(crn), term: String(term), userIds: [] });
+            crnMap.get(key).userIds.push(doc.id);
+        }
+    }
+
+    if (crnMap.size === 0) {
+        console.log('ℹ️  No tracked courses found across all users');
+        return [];
+    }
+
+    console.log(`📋 Polling ${crnMap.size} unique CRN(s) for ${usersSnap.size} user(s)...`);
+
+    // 3. Fetch each CRN and persist results
+    const results = [];
+    for (const { crn, term, userIds } of crnMap.values()) {
+        try {
+            const courseData = await fetchCourseData(crn, JSESSIONID, MRUB9SSBPRODREGHA, term);
+
+            // Write canonical course snapshot
+            await saveCourseData(courseData);
+
+            // Write per-user notification record so the server can check per-user
+            await updateUserCourseStatus(userIds, crn, courseData);
+
+            results.push({ crn, term, status: 'ok', seatsAvailable: courseData.seatsAvailable });
+            console.log(`  ✅ CRN ${crn} | seats: ${courseData.seatsAvailable}/${courseData.capacity} | ${courseData.status}`);
+        } catch (err) {
+            console.error(`  ❌ CRN ${crn}: ${err.message}`);
+            results.push({ crn, term, status: 'error', error: err.message });
+
+            // Still update lastChecked + error so polling engine can report it
+            await db.collection('course_data').doc(crn).set(
+                { lastChecked: new Date().toISOString(), lastError: err.message },
+                { merge: true }
+            ).catch(() => {});
+        }
 
         // Small delay to avoid hammering the API
         await sleep(300);
