@@ -1,14 +1,27 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
-import { addDoc, collection, getDocs, query, serverTimestamp, where, updateDoc, doc } from "firebase/firestore";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
-import { Eye, EyeOff, LogIn, UserPlus, BookOpen, Search } from "lucide-react";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDocs,
+  query,
+  serverTimestamp,
+  updateDoc,
+  where
+} from "firebase/firestore";
+import {
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword
+} from "firebase/auth";
+import { Eye, EyeOff, LogIn, Search, UserPlus } from "lucide-react";
 import Dashboard from "./Dashboard";
-import { db, auth } from "./firebase";
+import { auth, db } from "./firebase";
 
 const termOptions = [
-  { value: "Fall 2026", label: "Fall 2026" },
-  { value: "Winter 2027", label: "Winter 2027" }
+  { value: "Fall 2026", label: "Fall 2026", code: "202604" },
+  { value: "Winter 2027", label: "Winter 2027", code: "202701" }
 ];
 
 const styles = `
@@ -24,6 +37,8 @@ const styles = `
     --text: #f8fafc;
     --muted: #94a3b8;
     --cyan: #67e8f9;
+    --danger: #f87171;
+    --success: #22c55e;
   }
 
   html, body, #root { min-height: 100%; }
@@ -117,12 +132,9 @@ const styles = `
     cursor: pointer;
     padding: 0;
     text-decoration: underline;
-    transition: color 0.18s ease;
   }
 
-  .forgot-link:hover { color: #fff; }
-
-  input {
+  input, select {
     width: 100%;
     padding: 14px 15px;
     border-radius: 14px;
@@ -133,31 +145,14 @@ const styles = `
     transition: 0.18s ease;
   }
 
-  input:focus {
-    border-color: rgba(103,232,249,0.38);
-    box-shadow: 0 0 0 3px rgba(103,232,249,0.08);
-  }
-
-  select {
-    width: 100%;
-    padding: 14px 15px;
-    border-radius: 14px;
-    border: 1px solid rgba(255,255,255,0.09);
-    background: rgba(255,255,255,0.03);
-    color: var(--text);
-    outline: none;
-    transition: 0.18s ease;
-  }
-
-  select:focus {
+  input:focus, select:focus {
     border-color: rgba(103,232,249,0.38);
     box-shadow: 0 0 0 3px rgba(103,232,249,0.08);
   }
 
   option {
     color: #050816;
-    background:rgba(103,232,249,0.38);
-    align-items: center;
+    background: rgba(103,232,249,0.38);
   }
 
   .password-wrap { position: relative; }
@@ -180,12 +175,6 @@ const styles = `
     padding: 0;
   }
 
-  .toggle-visibility:hover:not(:disabled) {
-    color: var(--text);
-    border-color: rgba(103,232,249,0.35);
-    transform: translateY(-50%);
-  }
-
   .actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -195,7 +184,6 @@ const styles = `
 
   .actions-single {
     grid-template-columns: 1fr;
-    justify-items: center;
   }
 
   button {
@@ -208,7 +196,11 @@ const styles = `
     transition: transform 0.16s ease, box-shadow 0.18s ease, opacity 0.18s ease;
   }
 
-  .btn-signin {
+  button:hover:not(:disabled) { transform: translateY(-1px); }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  .btn-signin,
+  .btn-config {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -228,12 +220,21 @@ const styles = `
     border: 1px solid rgba(255,255,255,0.1);
   }
 
-  button:hover:not(:disabled) { transform: translateY(-1px); }
-  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn-full {
+    width: 100%;
+  }
 
-  .auth-error {
+  .auth-error, .track-status.error, .notify-status.error {
     margin-top: 12px;
-    color: #f87171;
+    color: var(--danger);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .track-status.success, .notify-status.success {
+    margin-top: 12px;
+    color: var(--success);
     font-size: 13px;
     font-weight: 700;
     text-align: center;
@@ -264,64 +265,7 @@ const styles = `
     font-weight: 700;
   }
 
-  .notify-config {
-    border-radius: 16px;
-    border: 1px solid rgba(56,189,248,0.14);
-    background: rgba(6, 20, 42, 0.52);
-    padding: 20px;
-  }
-
-  .notify-title {
-    color: #38bdf8;
-    font-size: 25px;
-    font-weight: 700;
-    margin-bottom: 2px;
-  }
-
-  .notify-subtext {
-    color: var(--muted);
-    font-size: 13px;
-    margin-bottom: 16px;
-  }
-
-  .notify-subtext a { color: #60a5fa; }
-
-  .btn-config {
-    width: 100%;
-    margin-top: 8px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: #ffffff;
-    background: linear-gradient(135deg, #0891b2 0%, #3b82f6 100%);
-    box-shadow: 0 12px 28px rgba(59,130,246,0.28);
-  }
-
-  .btn-full {
-    width: fit-content;
-    min-width: 220px;
-  }
-
-  .notify-status {
-    margin-top: 12px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  .notify-status.success {
-    color: #22c55e;
-    background: rgba(34,197,94,0.09);
-    border: 1px solid rgba(34,197,94,0.24);
-  }
-
-  .notify-status.error {
-    color: #f87171;
-    background: rgba(248,113,113,0.09);
-    border: 1px solid rgba(248,113,113,0.26);
-  }
-
+  .notify-config,
   .track-config {
     border-radius: 16px;
     border: 1px solid rgba(56,189,248,0.14);
@@ -329,6 +273,7 @@ const styles = `
     padding: 20px;
   }
 
+  .notify-title,
   .track-title {
     color: #38bdf8;
     font-size: 25px;
@@ -336,37 +281,75 @@ const styles = `
     margin-bottom: 2px;
   }
 
+  .notify-subtext,
   .track-subtext {
     color: var(--muted);
     font-size: 13px;
     margin-bottom: 16px;
   }
 
-  .track-status {
-    margin-top: 12px;
-    padding: 10px 12px;
-    border-radius: 10px;
-    font-size: 13px;
-    font-weight: 600;
-  }
-
-  .track-status.success {
-    color: #22c55e;
-    background: rgba(34,197,94,0.09);
-    border: 1px solid rgba(34,197,94,0.24);
-  }
-
-  .track-status.error {
-    color: #f87171;
-    background: rgba(248,113,113,0.09);
-    border: 1px solid rgba(248,113,113,0.26);
-  }
+  .notify-subtext a { color: #60a5fa; }
 
   @media (max-width: 480px) {
     .card { padding: 22px; border-radius: 20px; }
     .actions { grid-template-columns: 1fr; }
   }
 `;
+
+function normalizeEmail(value) {
+  return value.trim().toLowerCase();
+}
+
+function normalizePassword(value) {
+  return value.replace(/\s+/g, "").trim();
+}
+
+function getTermCode(termLabel) {
+  const match = termOptions.find((term) => term.value === termLabel);
+  return match ? match.code : "";
+}
+
+function getFirebaseErrorMessage(error) {
+  switch (error.code) {
+    case "auth/email-already-in-use":
+      return "That email is already registered.";
+    case "auth/invalid-email":
+      return "Please enter a valid email address.";
+    case "auth/weak-password":
+      return "Password must be at least 6 characters.";
+    case "auth/invalid-credential":
+      return "Incorrect email or password.";
+    case "auth/user-not-found":
+      return "No account found with that email.";
+    case "auth/too-many-requests":
+      return "Too many attempts. Try again later.";
+    default:
+      return "Something went wrong. Please try again.";
+  }
+}
+
+async function getSingleDocByField(collectionName, fieldName, value) {
+  const q = query(collection(db, collectionName), where(fieldName, "==", value));
+  const snapshot = await getDocs(q);
+
+  if (snapshot.empty) {
+    return null;
+  }
+
+  const firstDoc = snapshot.docs[0];
+  return {
+    id: firstDoc.id,
+    ...firstDoc.data()
+  };
+}
+
+async function getUserDocByEmail(email) {
+  return getSingleDocByField("users", "email", normalizeEmail(email));
+}
+
+async function getUserDocByUsername(username) {
+  return getSingleDocByField("users", "username", username.trim());
+}
 
 function Card({ children }) {
   return (
@@ -379,63 +362,85 @@ function Card({ children }) {
   );
 }
 
-function getFirebaseErrorMessage(error) {
-  switch (error.code) {
-    case "auth/email-already-in-use":
-      return "That email is already in use.";
-    case "auth/invalid-email":
-      return "Please enter a valid email address.";
-    case "auth/weak-password":
-      return "Password should be at least 6 characters.";
-    case "auth/invalid-credential":
-      return "Incorrect email or password.";
-    case "auth/user-not-found":
-      return "No account found with that email.";
-    case "auth/too-many-requests":
-      return "Too many attempts. Try again later.";
-    default:
-      return "Something went wrong. Please try again.";
-  }
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  placeholder,
+  autoComplete = "current-password"
+}) {
+  const [showPassword, setShowPassword] = useState(false);
+
+  return (
+    <div className="field">
+      <label htmlFor={id}>{label}</label>
+      <div className="password-wrap">
+        <input
+          id={id}
+          type={showPassword ? "text" : "password"}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+        />
+        <button
+          type="button"
+          className="toggle-visibility"
+          onClick={() => setShowPassword((prev) => !prev)}
+        >
+          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
+      </div>
+    </div>
+  );
 }
 
-async function getUsernameByEmail(email) {
-  const q = query(collection(db, "users"), where("email", "==", email.trim().toLowerCase()));
-  const snapshot = await getDocs(q);
-
-  if (snapshot.empty) {
-    return "";
-  }
-
-  return snapshot.docs[0].data().username || "";
+function StatusMessage({ status }) {
+  if (!status) return null;
+  return <div className={status.type === "success" ? `${status.scope} success` : `${status.scope} error`}>{status.text}</div>;
 }
 
 function SignInPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [authError, setAuthError] = useState("");
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const canSubmit = email.trim().length > 0 && password.trim().length > 0;
+  const canSubmit = useMemo(() => {
+    return form.email.trim() && form.password.trim();
+  }, [form]);
+
+  function updateField(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
 
   async function handleSignIn() {
-    if (!canSubmit) return;
+    if (!canSubmit) {
+      setStatus({ type: "error", text: "Please enter email and password.", scope: "auth-error" });
+      return;
+    }
 
     setLoading(true);
-    setAuthError("");
+    setStatus(null);
 
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
+      const normalizedEmail = normalizeEmail(form.email);
+      await signInWithEmailAndPassword(auth, normalizedEmail, form.password);
 
-      const username = await getUsernameByEmail(email);
+      const userDoc = await getUserDocByEmail(normalizedEmail);
+
       navigate("/dashboard", {
         state: {
-          username: username || email.trim()
+          username: userDoc?.username || normalizedEmail
         }
       });
     } catch (error) {
-      setAuthError(getFirebaseErrorMessage(error));
+      setStatus({
+        type: "error",
+        text: getFirebaseErrorMessage(error),
+        scope: "auth-error"
+      });
     } finally {
       setLoading(false);
     }
@@ -444,15 +449,15 @@ function SignInPage() {
   return (
     <Card>
       <h1>Sign in</h1>
-      <p>Enter your email and password, or click Sign up to register.</p>
+      <p>Enter your email and password, or create a new account.</p>
 
       <div className="field">
-        <label htmlFor="email">Email</label>
+        <label htmlFor="signinEmail">Email</label>
         <input
-          id="email"
+          id="signinEmail"
           type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          value={form.email}
+          onChange={(e) => updateField("email", e.target.value)}
           placeholder="Enter your email"
           autoComplete="email"
         />
@@ -460,7 +465,7 @@ function SignInPage() {
 
       <div className="field">
         <div className="label-header">
-          <label htmlFor="password">Password</label>
+          <label htmlFor="signinPassword">Password</label>
           <button
             type="button"
             className="forgot-link"
@@ -471,23 +476,13 @@ function SignInPage() {
           </button>
         </div>
 
-        <div className="password-wrap">
-          <input
-            id="password"
-            type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            autoComplete="current-password"
-          />
-          <button
-            type="button"
-            className="toggle-visibility"
-            onClick={() => setShowPassword((p) => !p)}
-          >
-            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        </div>
+        <PasswordField
+          id="signinPassword"
+          label=""
+          value={form.password}
+          onChange={(e) => updateField("password", e.target.value)}
+          placeholder="Enter your password"
+        />
       </div>
 
       <div className="actions">
@@ -510,73 +505,108 @@ function SignInPage() {
         </button>
       </div>
 
-      {authError && <div className="auth-error">{authError}</div>}
+      <StatusMessage status={status} />
     </Card>
   );
 }
 
 function SignUpPage() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [authError, setAuthError] = useState("");
+  const [form, setForm] = useState({
+    username: "",
+    name: "",
+    email: "",
+    password: "",
+    confirmPassword: ""
+  });
+  const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  function updateField(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function validateForm() {
+    if (!form.username.trim()) return "Please enter a username.";
+    if (!form.name.trim()) return "Please enter your name.";
+    if (!form.email.trim()) return "Please enter an email.";
+    if (!form.password.trim()) return "Please enter a password.";
+    if (!form.confirmPassword.trim()) return "Please confirm your password.";
+    if (form.password !== form.confirmPassword) return "Passwords do not match.";
+    return "";
+  }
+
   async function handleCreateAccount() {
-    setAuthError("");
+    const validationError = validateForm();
 
-    if (!username.trim()) {
-      setAuthError("Please enter a username.");
-      return;
-    }
-
-    if (!name.trim()) {
-      setAuthError("Please enter your name.");
-      return;
-    }
-
-    if (!email.trim()) {
-      setAuthError("Please enter an email.");
-      return;
-    }
-
-    if (!password.trim() || !confirmPassword.trim()) {
-      setAuthError("Please enter password and confirm password.");
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setAuthError("Password and confirm password do not match.");
+    if (validationError) {
+      setStatus({ type: "error", text: validationError, scope: "auth-error" });
       return;
     }
 
     setLoading(true);
+    setStatus(null);
 
     try {
-      await createUserWithEmailAndPassword(auth, email.trim(), password);
+      const normalizedEmail = normalizeEmail(form.email);
+
+      const existingUsernameDoc = await getUserDocByUsername(form.username);
+      if (existingUsernameDoc) {
+        setStatus({
+          type: "error",
+          text: "That username is already taken.",
+          scope: "auth-error"
+        });
+        setLoading(false);
+        return;
+      }
+
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        normalizedEmail,
+        form.password
+      );
 
       await addDoc(collection(db, "users"), {
-        username: username.trim(),
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
+        uid: userCredential.user.uid,
+        username: form.username.trim(),
+        name: form.name.trim(),
+        email: normalizedEmail,
         app_password: "",
-        password: password,
         createdAt: serverTimestamp()
       });
 
       navigate("/notify", {
         state: {
-          username: username.trim(),
-          email: email.trim().toLowerCase(),
+          username: form.username.trim(),
+          email: normalizedEmail,
           newAccount: true
         }
       });
     } catch (error) {
-      setAuthError(getFirebaseErrorMessage(error));
+      if (error.code === "auth/email-already-in-use") {
+        const existingUserDoc = await getUserDocByEmail(form.email);
+
+        if (!existingUserDoc) {
+          setStatus({
+            type: "error",
+            text: "This email already exists .",
+            scope: "auth-error"
+          });
+        } else {
+          setStatus({
+            type: "error",
+            text: "That email is already in use.",
+            scope: "auth-error"
+          });
+        }
+      } else {
+        setStatus({
+          type: "error",
+          text: getFirebaseErrorMessage(error),
+          scope: "auth-error"
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -585,27 +615,27 @@ function SignUpPage() {
   return (
     <Card>
       <h1>Sign up</h1>
-      <p>Create your account with a username, email, and password.</p>
+      <p>Create an account to track courses and receive notifications.</p>
 
       <div className="field">
-        <label htmlFor="username">Username</label>
+        <label htmlFor="signupUsername">Username</label>
         <input
-          id="username"
+          id="signupUsername"
           type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          value={form.username}
+          onChange={(e) => updateField("username", e.target.value)}
           placeholder="Enter your username"
           autoComplete="username"
         />
       </div>
 
       <div className="field">
-        <label htmlFor="name">Name</label>
+        <label htmlFor="signupName">Name</label>
         <input
-          id="name"
+          id="signupName"
           type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
+          value={form.name}
+          onChange={(e) => updateField("name", e.target.value)}
           placeholder="Enter your name"
           autoComplete="name"
         />
@@ -616,54 +646,30 @@ function SignUpPage() {
         <input
           id="signupEmail"
           type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          value={form.email}
+          onChange={(e) => updateField("email", e.target.value)}
           placeholder="Enter your email"
           autoComplete="email"
         />
       </div>
 
-      <div className="field">
-        <label htmlFor="password">Password</label>
-        <div className="password-wrap">
-          <input
-            id="password"
-            type={showPassword ? "text" : "password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter your password"
-            autoComplete="new-password"
-          />
-          <button
-            type="button"
-            className="toggle-visibility"
-            onClick={() => setShowPassword((p) => !p)}
-          >
-            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        </div>
-      </div>
+      <PasswordField
+        id="signupPassword"
+        label="Password"
+        value={form.password}
+        onChange={(e) => updateField("password", e.target.value)}
+        placeholder="Enter your password"
+        autoComplete="new-password"
+      />
 
-      <div className="field">
-        <label htmlFor="confirmPassword">Confirm Password</label>
-        <div className="password-wrap">
-          <input
-            id="confirmPassword"
-            type={showPassword ? "text" : "password"}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Confirm your password"
-            autoComplete="new-password"
-          />
-          <button
-            type="button"
-            className="toggle-visibility"
-            onClick={() => setShowPassword((p) => !p)}
-          >
-            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-          </button>
-        </div>
-      </div>
+      <PasswordField
+        id="confirmPassword"
+        label="Confirm Password"
+        value={form.confirmPassword}
+        onChange={(e) => updateField("confirmPassword", e.target.value)}
+        placeholder="Confirm your password"
+        autoComplete="new-password"
+      />
 
       <div className="actions actions-single">
         <button
@@ -676,7 +682,7 @@ function SignUpPage() {
         </button>
       </div>
 
-      {authError && <div className="auth-error">{authError}</div>}
+      <StatusMessage status={status} />
     </Card>
   );
 }
@@ -684,26 +690,36 @@ function SignUpPage() {
 function ResetPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
-  const [authError, setAuthError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
   async function handleResetPassword() {
-    setAuthError("");
-    setSuccessMessage("");
+    setStatus(null);
 
     if (!email.trim()) {
-      setAuthError("Please enter your email.");
+      setStatus({
+        type: "error",
+        text: "Please enter your email.",
+        scope: "auth-error"
+      });
       return;
     }
 
     setLoading(true);
 
     try {
-      await sendPasswordResetEmail(auth, email.trim());
-      setSuccessMessage("Password reset email sent.");
+      await sendPasswordResetEmail(auth, normalizeEmail(email));
+      setStatus({
+        type: "success",
+        text: "Password reset email sent.",
+        scope: "notify-status"
+      });
     } catch (error) {
-      setAuthError(getFirebaseErrorMessage(error));
+      setStatus({
+        type: "error",
+        text: getFirebaseErrorMessage(error),
+        scope: "auth-error"
+      });
     } finally {
       setLoading(false);
     }
@@ -712,7 +728,7 @@ function ResetPage() {
   return (
     <Card>
       <h1>Forgot password</h1>
-      <p>Enter your account email to receive a password reset link.</p>
+      <p>Enter your email to receive a password reset link.</p>
 
       <div className="field">
         <label htmlFor="resetEmail">Email</label>
@@ -746,8 +762,7 @@ function ResetPage() {
         </button>
       </div>
 
-      {authError && <div className="auth-error">{authError}</div>}
-      {successMessage && <div className="notify-status success">{successMessage}</div>}
+      <StatusMessage status={status} />
     </Card>
   );
 }
@@ -758,54 +773,78 @@ function NotifyPage() {
   const username = location.state?.username ?? "";
   const email = location.state?.email ?? "";
 
-  const [notificationEmail, setNotificationEmail] = useState("");
+  const [notificationEmail, setNotificationEmail] = useState(email);
   const [notificationPassword, setNotificationPassword] = useState("");
-  const [notifyConfigResult, setNotifyConfigResult] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
+  const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSaveNotificationSettings() {
-    const trimmedEmail = notificationEmail.trim();
-    const normalizedPassword = notificationPassword.replace(/\s+/g, "").trim();
+    const trimmedEmail = normalizeEmail(notificationEmail);
+    const cleanedPassword = normalizePassword(notificationPassword);
 
-    if (!trimmedEmail || !normalizedPassword) {
-      setNotifyConfigResult({ type: "error", text: "Email not configured" });
+    if (!trimmedEmail || !cleanedPassword) {
+      setStatus({
+        type: "error",
+        text: "Please enter Gmail address and app password.",
+        scope: "notify-status"
+      });
       return;
     }
 
     setLoading(true);
-    setNotifyConfigResult(null);
+    setStatus(null);
 
     try {
-      const configResponse = await fetch("http://localhost:3001/api/configure-email", {
+      const response = await fetch("http://localhost:3001/api/configure-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: trimmedEmail, password: normalizedPassword })
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: cleanedPassword
+        })
       });
 
-      const configData = await configResponse.json();
+      const data = await response.json();
 
-      if (!configResponse.ok || !configData.success) {
-        setNotifyConfigResult({ type: "error", text: "Email not configured" });
+      if (!response.ok || !data.success) {
+        setStatus({
+          type: "error",
+          text: "Email not configured.",
+          scope: "notify-status"
+        });
+        setLoading(false);
         return;
       }
 
-      const userQuery = query(collection(db, "users"), where("username", "==", username));
-      const userSnapshot = await getDocs(userQuery);
-      if (!userSnapshot.empty) {
-        const userDoc = userSnapshot.docs[0];
+      const userDoc = await getUserDocByUsername(username);
+
+      if (userDoc) {
         await updateDoc(doc(db, "users", userDoc.id), {
-          app_password: normalizedPassword
+          app_password: cleanedPassword
         });
       }
 
-      setNotifyConfigResult({ type: "success", text: "Email configured successfully" });
+      setStatus({
+        type: "success",
+        text: "Email configured successfully.",
+        scope: "notify-status"
+      });
 
       setTimeout(() => {
-        navigate("/track", { state: { username, email: trimmedEmail } });
+        navigate("/track", {
+          state: {
+            username,
+            email: trimmedEmail
+          }
+        });
       }, 1000);
     } catch {
-      setNotifyConfigResult({ type: "error", text: "Email not configured" });
+      setStatus({
+        type: "error",
+        text: "Email not configured.",
+        scope: "notify-status"
+      });
     } finally {
       setLoading(false);
     }
@@ -816,7 +855,11 @@ function NotifyPage() {
       {showBanner && (
         <div className="notify-banner">
           <span>⚠ Email notifications not configured</span>
-          <button className="notify-hide" type="button" onClick={() => setShowBanner(false)}>
+          <button
+            className="notify-hide"
+            type="button"
+            onClick={() => setShowBanner(false)}
+          >
             Hide
           </button>
         </div>
@@ -825,7 +868,14 @@ function NotifyPage() {
       <div className="notify-config">
         <div className="notify-title">Email Configuration</div>
         <div className="notify-subtext">
-          Use Gmail with an <a href="https://support.google.com/accounts/answer/185833" target="_blank" rel="noreferrer">App Password</a>
+          Use Gmail with an{" "}
+          <a
+            href="https://support.google.com/accounts/answer/185833"
+            target="_blank"
+            rel="noreferrer"
+          >
+            App Password
+          </a>
         </div>
 
         <div className="field">
@@ -840,20 +890,17 @@ function NotifyPage() {
           />
         </div>
 
-        <div className="field">
-          <label htmlFor="notificationPassword">App Password</label>
-          <input
-            id="notificationPassword"
-            type="password"
-            value={notificationPassword}
-            onChange={(e) => setNotificationPassword(e.target.value)}
-            placeholder="Enter your app password"
-            autoComplete="new-password"
-          />
-        </div>
+        <PasswordField
+          id="notificationPassword"
+          label="App Password"
+          value={notificationPassword}
+          onChange={(e) => setNotificationPassword(e.target.value)}
+          placeholder="Enter your app password"
+          autoComplete="new-password"
+        />
 
         <button
-          className="btn-config"
+          className="btn-config btn-full"
           type="button"
           onClick={handleSaveNotificationSettings}
           disabled={loading}
@@ -861,68 +908,55 @@ function NotifyPage() {
           {loading ? "Saving..." : "Save Configuration"}
         </button>
 
-        {notifyConfigResult && (
-          <div className={`notify-status ${notifyConfigResult.type}`}>
-            {notifyConfigResult.text}
-          </div>
-        )}
-        {/*
-        <div style={{ marginTop: "16px" }}>
-          <button
-            className="btn-signup"
-            style={{ width: "100%" }}
-            type="button"
-            onClick={() => navigate("/track", { state: { username } })}
-          >
-            Skip for now →
-          </button>
-        </div>
-      */}
+        <StatusMessage status={status} />
       </div>
     </Card>
   );
 }
+
 function TrackPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const username = location.state?.username ?? "";
   const email = location.state?.email ?? "";
 
-  const [name, setName] = useState("");
-  const [crn, setCrn] = useState("");
-  const [term, setTerm] = useState("Fall 2026");
-  const [trackResult, setTrackResult] = useState(null);
+  const [form, setForm] = useState({
+    name: "",
+    crn: "",
+    term: "Fall 2026"
+  });
+  const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const canSubmit = name.trim().length > 0 && crn.trim().length > 0 && term.trim().length > 0;
+  const canSubmit = useMemo(() => {
+    return form.name.trim() && form.crn.trim() && form.term.trim();
+  }, [form]);
+
+  function updateField(field, value) {
+    setForm((prev) => ({ ...prev, [field]: value }));
+  }
 
   async function handleStartTracking() {
-    const trimmedName = name.trim();
-    const trimmedCrn = crn.trim();
-    const trimmedTerm = term.trim();
-    let termCode = "";
+    const trimmedName = form.name.trim();
+    const trimmedCrn = form.crn.trim();
+    const termCode = getTermCode(form.term);
 
-    if (trimmedTerm === "Winter 2027") {
-      termCode = "202701";
-    } else if (trimmedTerm === "Fall 2026") {
-      termCode = "202604";
+    if (!trimmedName || !trimmedCrn || !termCode) {
+      setStatus({
+        type: "error",
+        text: "Please fill all fields.",
+        scope: "track-status"
+      });
+      return;
     }
 
-    if (!trimmedName || !trimmedCrn || !termCode) return;
-
     setLoading(true);
-    setTrackResult(null);
+    setStatus(null);
 
     try {
-      const userQuery = query(collection(db, "users"), where("username", "==", username));
-      const userSnapshot = await getDocs(userQuery);
-      let appPassword = "";
-      let accountEmail = email || "";
-      if (!userSnapshot.empty) {
-        const userData = userSnapshot.docs[0].data();
-        appPassword = userData.app_password || "";
-        accountEmail = userData.email || email || "";
-      }
+      const userDoc = await getUserDocByUsername(username);
+      const appPassword = userDoc?.app_password || "";
+      const accountEmail = userDoc?.email || email || "";
 
       const existingQuery = query(
         collection(db, "tracked_courses"),
@@ -934,10 +968,12 @@ function TrackPage() {
       const existingSnapshot = await getDocs(existingQuery);
 
       if (!existingSnapshot.empty) {
-        setTrackResult({
+        setStatus({
           type: "error",
-          text: "You are already tracking this course."
+          text: "You are already tracking this course.",
+          scope: "track-status"
         });
+        setLoading(false);
         return;
       }
 
@@ -951,22 +987,31 @@ function TrackPage() {
         createdAt: serverTimestamp()
       });
 
-      setTrackResult({
+      setStatus({
         type: "success",
-        text: "Course saved! You will be notified when a seat opens."
+        text: "Course saved. You will be notified when a seat opens.",
+        scope: "track-status"
       });
 
-      setName("");
-      setCrn("");
-      setTerm("Fall 2026");
+      setForm({
+        name: "",
+        crn: "",
+        term: "Fall 2026"
+      });
 
       setTimeout(() => {
-        navigate("/dashboard", { state: { username, term: termCode } });
-      }, 1500);
+        navigate("/dashboard", {
+          state: {
+            username,
+            term: termCode
+          }
+        });
+      }, 1200);
     } catch {
-      setTrackResult({
+      setStatus({
         type: "error",
-        text: "Could not save course."
+        text: "Could not save course.",
+        scope: "track-status"
       });
     } finally {
       setLoading(false);
@@ -982,31 +1027,35 @@ function TrackPage() {
         </div>
 
         <div className="field">
-          <label htmlFor="name">Your Name</label>
+          <label htmlFor="trackName">Your Name</label>
           <input
-            id="name"
+            id="trackName"
             type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={form.name}
+            onChange={(e) => updateField("name", e.target.value)}
             placeholder="Enter your name"
             autoComplete="name"
           />
         </div>
 
         <div className="field">
-          <label htmlFor="crn">Course CRN</label>
+          <label htmlFor="trackCrn">Course CRN</label>
           <input
-            id="crn"
+            id="trackCrn"
             type="text"
-            value={crn}
-            onChange={(e) => setCrn(e.target.value)}
+            value={form.crn}
+            onChange={(e) => updateField("crn", e.target.value)}
             placeholder="e.g. 12345"
           />
         </div>
 
         <div className="field">
-          <label htmlFor="term">Term</label>
-          <select id="term" value={term} onChange={(e) => setTerm(e.target.value)}>
+          <label htmlFor="trackTerm">Term</label>
+          <select
+            id="trackTerm"
+            value={form.term}
+            onChange={(e) => updateField("term", e.target.value)}
+          >
             {termOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -1016,25 +1065,20 @@ function TrackPage() {
         </div>
 
         <button
-          className="btn-config"
+          className="btn-config btn-full"
           type="button"
           onClick={handleStartTracking}
           disabled={!canSubmit || loading}
         >
-          <Search size={16} style={{ marginRight: 8 }} />
+          <Search size={16} />
           {loading ? "Starting..." : "Start Tracking"}
         </button>
 
-        {trackResult && (
-          <div className={`track-status ${trackResult.type}`}>
-            {trackResult.text}
-          </div>
-        )}
+        <StatusMessage status={status} />
 
         <div style={{ marginTop: "16px" }}>
           <button
-            className="btn-signup"
-            style={{ width: "100%" }}
+            className="btn-signup btn-full"
             type="button"
             onClick={() => navigate("/signin")}
           >
@@ -1045,6 +1089,7 @@ function TrackPage() {
     </Card>
   );
 }
+
 export default function App() {
   return (
     <>
