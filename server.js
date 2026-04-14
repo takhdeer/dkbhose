@@ -100,7 +100,7 @@ app.post('/api/submit', authMiddleware, async (req, res) => {
 
     // Send confirmation email
     if (emailService.isConfigured()) {
-      await emailService.sendConfirmation(email, StudentName  , crn, sessionId);
+      await emailService.sendConfirmation(email, StudentName  , crn);
     }
 
     res.json({ success: true, message: 'Course monitoring started successfully'});
@@ -222,6 +222,17 @@ app.post('/api/auto-login', async (req,res) => {
     res.status(500).json({success: false, message: error.message});
   }
 }); 
+
+app.post('/api/send-confirmation', async (req, res) => {
+  try {
+    const { email, name, crn } = req.body;
+    await emailService.sendConfirmation(email, name, crn);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 
 // Start server
 app.listen(PORT, () => {

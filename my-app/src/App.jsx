@@ -937,6 +937,7 @@ function TrackPage() {
   }
 
   async function handleStartTracking() {
+    console.log("email: ", email);
     const trimmedName = form.name.trim();
     const trimmedCrn = form.crn.trim();
     const termCode = getTermCode(form.term);
@@ -987,6 +988,15 @@ function TrackPage() {
         createdAt: serverTimestamp()
       });
 
+      await fetch("http://localhost:3001/api/send-confirmation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: accountEmail,
+          name: trimmedName,
+          crn: trimmedCrn,
+        }),
+      });
       setStatus({
         type: "success",
         text: "Course saved. You will be notified when a seat opens.",
