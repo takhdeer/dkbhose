@@ -1,12 +1,8 @@
 import { useState } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { addDoc, collection, getDocs, query, serverTimestamp, where, updateDoc, doc } from "firebase/firestore";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail
-} from "firebase/auth";
-import { Eye, EyeOff, LogIn, UserPlus, Search } from "lucide-react";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from "firebase/auth";
+import { Eye, EyeOff, LogIn, UserPlus, BookOpen, Search } from "lucide-react";
 import Dashboard from "./Dashboard";
 import { db, auth } from "./firebase";
 
